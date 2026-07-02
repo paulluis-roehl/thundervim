@@ -71,7 +71,7 @@ misbehaves on a complex message, please file an issue.
 | Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` |
 | Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at column 72, keeps quote markers like `> `) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` |
-| Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
+| Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p s}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`, `das`); also selectable in Visual mode |
 | Replace | `r{char}` |
 | Case | `~` (with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
 | Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |

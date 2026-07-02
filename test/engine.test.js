@@ -370,6 +370,56 @@ test("dip deletes the inner paragraph", () => {
   assert.strictEqual(s.text, "\n\nc");
 });
 
+test("das deletes a sentence with its trailing space", () => {
+  const s = normal("One two. Three four. Five six.", 0);
+  feed(s, ["d", "a", "s"]);
+  assert.strictEqual(s.text, "Three four. Five six.");
+});
+
+test("dis deletes the inner sentence, keeping surrounding space", () => {
+  const s = normal("One two. Three four. Five six.", 0);
+  feed(s, ["d", "i", "s"]);
+  assert.strictEqual(s.text, " Three four. Five six.");
+});
+
+test("das on a middle sentence", () => {
+  const s = normal("One two. Three four. Five six.", 10); // inside 'Three four.'
+  feed(s, ["d", "a", "s"]);
+  assert.strictEqual(s.text, "One two. Five six.");
+});
+
+test("das on the last sentence takes the leading space", () => {
+  const s = normal("One two. Three four. Five six.", 22); // inside 'Five six.'
+  feed(s, ["d", "a", "s"]);
+  assert.strictEqual(s.text, "One two. Three four.");
+});
+
+test("a sentence ends after closing quotes/brackets", () => {
+  const s = normal('He said "Hi!" Then left.', 0);
+  feed(s, ["d", "a", "s"]);
+  assert.strictEqual(s.text, "Then left.");
+});
+
+test("a sentence does not cross a blank line", () => {
+  const s = normal("First para.\n\nSecond para.", 0);
+  feed(s, ["d", "a", "s"]);
+  assert.strictEqual(s.text, "\n\nSecond para.");
+});
+
+test("cas changes a sentence and enters insert", () => {
+  const s = normal("One two. Three four.", 0);
+  feed(s, ["c", "a", "s"]);
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+  assert.strictEqual(s.text, "Three four.");
+});
+
+test("visual as selects the sentence", () => {
+  const s = normal("One two. Three four.", 2);
+  feed(s, ["v", "a", "s"]);
+  feed(s, "d");
+  assert.strictEqual(s.text, "Three four.");
+});
+
 // ---- f/F/t/T and ; , -------------------------------------------------------
 
 test("f moves to the next occurrence on the line", () => {

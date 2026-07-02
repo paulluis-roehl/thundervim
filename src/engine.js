@@ -176,6 +176,8 @@
         return pairObject(text, pos, inner, "<", ">");
       case "p":
         return paragraphObject(text, pos, inner);
+      case "s":
+        return sentenceObject(text, pos, inner);
       default:
         return null;
     }
@@ -289,6 +291,81 @@
       if (te > e) end = lines[te].end;
     }
     return { start: lines[s].start, end: end };
+  }
+
+  // A sentence ends at '.', '!' or '?' (with any trailing ) ] " ' ) followed by
+  // whitespace or the paragraph end. Sentences never cross a blank line, so the
+  // scan is limited to the block of non-blank lines around the cursor.
+  function sentenceObject(text, pos, inner) {
+    if (text.length === 0) return { start: 0, end: 0 };
+    if (pos >= text.length) pos = text.length - 1;
+    var lines = buildLines(text);
+    var li = lineOf(lines, pos);
+    function blank(n) {
+      return lines[n].start === lines[n].end;
+    }
+    if (blank(li)) return { start: lines[li].start, end: lines[li].start };
+    var s = li,
+      e = li;
+    while (s - 1 >= 0 && !blank(s - 1)) s--;
+    while (e + 1 < lines.length && !blank(e + 1)) e++;
+    var pStart = lines[s].start;
+    var pEnd = lines[e].end;
+
+    function isWs(i) {
+      var c = text[i];
+      return c === " " || c === "\t" || c === "\n";
+    }
+    function isCloser(c) {
+      return c === ")" || c === "]" || c === '"' || c === "'";
+    }
+    // Split the paragraph into { start, contentEnd, end } sentences, where
+    // [contentEnd, end) is the whitespace that trails the sentence.
+    var sentences = [];
+    var i = pStart;
+    while (i < pEnd) {
+      var start = i;
+      while (start < pEnd && isWs(start)) start++;
+      if (start >= pEnd) break;
+      var j = start;
+      var contentEnd = -1;
+      while (j < pEnd) {
+        var c = text[j];
+        if (c === "." || c === "!" || c === "?") {
+          var k = j + 1;
+          while (k < pEnd && isCloser(text[k])) k++;
+          if (k >= pEnd || isWs(k)) {
+            contentEnd = k;
+            break;
+          }
+          j = k;
+        } else {
+          j++;
+        }
+      }
+      if (contentEnd < 0) contentEnd = pEnd;
+      var end = contentEnd;
+      while (end < pEnd && isWs(end)) end++;
+      sentences.push({ start: start, contentEnd: contentEnd, end: end });
+      i = end;
+    }
+    if (sentences.length === 0) return { start: pStart, end: pStart };
+
+    var sel = sentences[sentences.length - 1];
+    for (var m = 0; m < sentences.length; m++) {
+      if (pos < sentences[m].end) {
+        sel = sentences[m];
+        break;
+      }
+    }
+    if (inner) return { start: sel.start, end: sel.contentEnd };
+    // "a sentence" adds the trailing whitespace; when there is none (the last
+    // sentence in the paragraph) it takes the leading whitespace instead, the
+    // same fallback `aw` uses.
+    if (sel.end > sel.contentEnd) return { start: sel.start, end: sel.end };
+    var st = sel.start;
+    while (st > pStart && isWs(st - 1)) st--;
+    return { start: st, end: sel.contentEnd };
   }
 
   // ---- motions --------------------------------------------------------------
