@@ -683,12 +683,21 @@
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     suppressInput = true;
+    // Clear on the next tick so ONLY the input events synchronously produced by
+    // this key (keypress + beforeinput) are cancelled. Otherwise the flag would
+    // linger and cancel unrelated input in the window before the next keydown
+    // (e.g. clicking the Bold/Italic toolbar button, paste, or IME), which
+    // silently breaks those actions.
+    setTimeout(function () {
+      suppressInput = false;
+    }, 0);
   }
 
   // Cancel the editor edit that a swallowed key would otherwise produce. This
-  // fires after our keydown handler ran and set `suppressInput`. We do NOT clear
-  // the flag here so that both keypress and beforeinput for the same key are
-  // cancelled; it is reset at the start of the next keydown.
+  // fires after our keydown handler ran and set `suppressInput`. The flag stays
+  // set only for the current tick (see `swallow`), so both keypress and
+  // beforeinput for the same key are cancelled without affecting later,
+  // unrelated input events.
   function onInputEvent(e) {
     if (!suppressInput) return;
     e.preventDefault();
