@@ -358,9 +358,48 @@
         var idx2 = state._hadCount ? Math.min(count, lines2.length) - 1 : 0;
         return { pos: firstNonBlank(text, lines2[idx2].start), kind: "line" };
       }
+      case "%": {
+        var mb = matchBracket(text, pos);
+        return mb < 0 ? null : { pos: mb, kind: "incl" };
+      }
       default:
         return null;
     }
+  }
+
+  // For `%`: from the bracket under the cursor (or the first bracket forward on
+  // the current line), find the position of its match. Returns -1 if none.
+  function matchBracket(text, pos) {
+    var open = { "(": ")", "[": "]", "{": "}" };
+    var close = { ")": "(", "]": "[", "}": "{" };
+    var le = lineEndAt(text, pos);
+    var i = pos,
+      ch = null;
+    if (text[pos] && (open[text[pos]] || close[text[pos]])) {
+      ch = text[pos];
+    } else {
+      for (i = pos; i < le; i++) {
+        if (open[text[i]] || close[text[i]]) {
+          ch = text[i];
+          break;
+        }
+      }
+      if (ch === null) return -1;
+    }
+    var depth = 0,
+      j;
+    if (open[ch]) {
+      for (j = i; j < text.length; j++) {
+        if (text[j] === ch) depth++;
+        else if (text[j] === open[ch] && --depth === 0) return j;
+      }
+    } else {
+      for (j = i; j >= 0; j--) {
+        if (text[j] === ch) depth++;
+        else if (text[j] === close[ch] && --depth === 0) return j;
+      }
+    }
+    return -1;
   }
 
   function moveVertical(text, pos, count, dir, desiredCol) {
@@ -756,6 +795,7 @@
     "{": 1,
     "}": 1,
     G: 1,
+    "%": 1,
   };
 
   // ---- dot-repeat recording -------------------------------------------------

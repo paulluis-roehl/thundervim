@@ -19,6 +19,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | --- | --- |
 | Motions | `h j k l`, `w W b B e E`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
 | Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (compose: `df,`, `ct)`) |
+| Match bracket | `%` (jumps between `()`/`[]`/`{}`; works as an inclusive motion, e.g. `d%`, `c%`) |
 | Enter insert | `i a I A o O` |
 | Delete | `x`, `dd`, `d{motion}`, `D` |
 | Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |

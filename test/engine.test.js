@@ -753,6 +753,50 @@ test(". repeats >>", () => {
   assert.strictEqual(s.text, "    a\n    b");
 });
 
+// ---- % (matching bracket) --------------------------------------------------
+
+test("% jumps from an opening bracket to its match", () => {
+  const s = normal("a(bc)d", 1);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 4);
+});
+
+test("% jumps from a closing bracket back to its match", () => {
+  const s = normal("a(bc)d", 4);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 1);
+});
+
+test("% scans forward on the line when not on a bracket", () => {
+  const s = normal("ab(cd)e", 0);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 5);
+});
+
+test("% respects nesting", () => {
+  const s = normal("(a(b)c)", 0);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 6);
+});
+
+test("% matches across lines", () => {
+  const s = normal("(\n)", 0);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 2);
+});
+
+test("d% deletes through the matching bracket inclusively", () => {
+  const s = normal("x(yz)w", 1);
+  feed(s, ["d", "%"]);
+  assert.strictEqual(s.text, "xw");
+});
+
+test("% is a no-op when there is no bracket on the line", () => {
+  const s = normal("abc", 0);
+  feed(s, "%");
+  assert.strictEqual(s.cursor, 0);
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {
