@@ -1,91 +1,102 @@
 # Thundervim
 
-Vim keybindings for editing **plain-text** email in the Thunderbird compose window.
+Vim keybindings for editing **plain-text** email in Thunderbird's compose window.
 
-Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
+Write email the way you edit code: Normal / Insert / Visual modes, motions,
+operators, text objects, search, and paragraph reflow — all inside the
+Thunderbird composer, with a mode line and block cursor to match.
 
-## Scope (v1)
+## Requirements
 
-- **Plain-text compose only.** The rich-text (HTML) composer is out of scope; see
-  [Composing in plain text](#composing-in-plain-text).
-- Modes: **Normal**, **Insert**, **Visual** (charwise `v`) and **Visual Line** (`V`).
-- The vim engine is pure and DOM-free (`src/engine.js`); a thin adapter
-  (`src/compose.js`) bridges it to the compose editor. The engine is fully unit
-  tested with `node --test` — no Thunderbird required.
+- **Thunderbird 151 or newer** (developed and tested against 152).
+- A **plain-text** compose window. The rich-text (HTML) composer is not
+  supported — see [Composing in plain text](#composing-in-plain-text).
 
-## Supported commands
+## Install
 
-| Group | Keys |
-| --- | --- |
-| Motions | `h j k l`, `w W b B e E`, `ge` / `gE`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
-| Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (compose: `df,`, `ct)`) |
-| Match bracket | `%` (jumps between `()`/`[]`/`{}`; works as an inclusive motion, e.g. `d%`, `c%`) |
-| Enter insert | `i a I A o O` |
-| Delete | `x`, `X`, `dd`, `d{motion}`, `D` |
-| Change | `s`, `S`, `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
-| Join | `J`, `[count]J`, and `J` over a Visual selection |
-| Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` (spaces, `shiftWidth` in `compose.js`) |
-| Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at `textWidth`, preserves quote leaders like `> `) |
-| Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
-| Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
-| Replace | `r{char}` |
-| Case | `~` (toggle, with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
-| Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
-| Search | `/pat` `?pat` (literal, smartcase), `*` / `#` (whole word under cursor), `n` / `N` to step with wrap; matches highlight live while typing and persist until `Esc` |
-| Undo / redo | `u`, `Ctrl-r` |
-| Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
-| Leave insert | `Esc`, or the `jk` sequence |
-| Toggle on/off | `Ctrl-Alt-V` |
+### Permanent (recommended)
 
-Counts combine with operators (e.g. `2dd`, `d3w`). Yank/paste use an internal
-register, so `y`/`p` never touch your system clipboard.
+Once published, install Thundervim from
+[addons.thunderbird.net](https://addons.thunderbird.net). Store builds are
+signed, so they survive restarts and update automatically. *(Listing pending.)*
 
-## Behavior notes
+### Try it now (temporary add-on)
 
-- **Default mode is Insert** when a compose window opens, so you can start typing
-  immediately. Press `Esc` (or `jk`) to enter Normal mode.
-- The current mode is shown in a **status bar** pinned to the bottom of the
-  editor, with a vim-style **ruler** on the right showing the cursor's
-  `line,column` and its `Top`/`Bot`/`All`/percentage position through the
-  buffer. A **block cursor** highlights the character under the cursor in
-  Normal/Visual mode. Both live outside the message body and are never sent.
-- In Insert mode the native editor handles typing normally (IME, spellcheck and
-  reply-quoting keep working); Thundervim only intercepts the keys that leave
-  Insert mode.
-- Any `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird, so
-  **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), etc. still work. (`Ctrl-r` is the
-  one exception — it is redo.)
-- **Insert-mode escape:** `Esc` returns to Normal mode. An optional two-key
-  escape sequence (e.g. `jk`) can be enabled via `insertEscapeSequence` in
-  `src/compose.js` as a fallback if Thunderbird's window-level `Esc` proves
-  unreliable. It is disabled by default, matching vanilla vim.
+You can load the add-on without signing; it stays until you restart Thunderbird.
 
-## Install (temporary add-on)
+1. Download `thundervim-<version>.xpi` from the
+   [Releases](../../releases) page (or build it yourself — see
+   [CONTRIBUTING.md](CONTRIBUTING.md)).
+2. In Thunderbird: **Tools → Developer Tools → Debug Add-ons**
+   (or open `about:debugging#/runtime/this-firefox`).
+3. Click **Load Temporary Add-on…** and select the `.xpi` (or this project's
+   `manifest.json`).
+4. Open a plain-text compose window and start editing.
 
-1. In Thunderbird: **Tools → Developer Tools → Debug Add-ons** (or go to
-   `about:debugging#/runtime/this-firefox`).
-2. Click **Load Temporary Add-on…** and select `thundervim/manifest.json`.
-3. Open a **plain-text** compose window (see below) and start editing.
+Permanent installation of an unsigned build is only possible on
+Developer/unbranded Thunderbird with signature enforcement disabled.
 
-Temporary add-ons are removed when Thunderbird restarts. To install permanently
-you must sign the add-on via [addons.thunderbird.net](https://addons.thunderbird.net)
-or run an unbranded/Developer Edition build with signature enforcement disabled.
-
-### Composing in plain text
+## Composing in plain text
 
 Thundervim targets the plain-text composer. To open one:
 
 - Hold **Shift** while clicking **Write** / **Reply**, or
-- Set plain text as the default: **Settings → Composition** (or per-account
+- Make it the default: **Settings → Composition** (or per-account
   *Account Settings → Composition & Addressing* → uncheck *Compose messages in
   HTML format*).
 
-In an HTML compose window the engine still loads, but Normal-mode edits rewrite
-the body as plain text and will strip formatting — so use it in plain-text mode.
+In an HTML compose window the add-on still loads, but Normal-mode edits rewrite
+the body as plain text and strip formatting, so stick to plain-text mode.
+
+## Commands
+
+| Group | Keys |
+| --- | --- |
+| Motions | `h j k l`, `w W b B e E`, `ge` / `gE`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
+| Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (e.g. `df,`, `ct)`) |
+| Match bracket | `%` (jumps between `()`/`[]`/`{}`; also an inclusive motion, e.g. `d%`, `c%`) |
+| Enter insert | `i a I A o O` |
+| Delete | `x`, `X`, `dd`, `d{motion}`, `D` |
+| Change | `s`, `S`, `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
+| Join | `J`, `[count]J`, and `J` over a Visual selection |
+| Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` |
+| Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at column 72, keeps quote markers like `> `) |
+| Yank / paste | `yy`, `y{motion}`, `p`, `P` |
+| Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
+| Replace | `r{char}` |
+| Case | `~` (with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
+| Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
+| Search | `/pat` `?pat` (smartcase), `*` / `#` (word under cursor), `n` / `N` to step; matches highlight while typing and persist until `Esc` |
+| Undo / redo | `u`, `Ctrl-r` |
+| Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
+| Leave insert | `Esc` |
+| Toggle on/off | `Ctrl-Alt-V` |
+
+Counts combine with operators (e.g. `2dd`, `d3w`). Yank/paste use an internal
+register, so `y` / `p` never touch your system clipboard — **nothing you edit
+leaves your machine.**
+
+## Modes and the status bar
+
+- **Insert mode is the default** when a compose window opens, so you can type
+  right away. Press `Esc` to enter Normal mode.
+- A **status bar** is pinned to the bottom of the editor showing the current
+  mode, plus a vim-style **ruler** on the right with the cursor's `line,column`
+  and its `Top` / `Bot` / `All` / percentage position through the message.
+- A **block cursor** marks the character under the cursor in Normal / Visual
+  mode. The status bar and cursor live outside the message body and are never
+  sent.
+- In Insert mode the native editor handles typing (IME, spellcheck, and
+  reply-quoting all keep working); Thundervim only intercepts the keys that
+  leave Insert mode.
+- Any `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird, so
+  **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), and friends still work. The one
+  exception is `Ctrl-r`, which is redo.
 
 ## Configuration
 
-All tunables are constants at the top of `src/compose.js`:
+Thundervim has no options screen yet. The tunables are constants at the top of
+`src/compose.js` — edit them and reload the add-on:
 
 ```js
 var CONFIG = {
@@ -99,34 +110,20 @@ var CONFIG = {
 };
 ```
 
-## Development
+`insertEscapeSequence` is off by default (matching vanilla vim, where only
+`Esc` leaves Insert mode). Set it to a two-key pair like `'jk'` if you want the
+classic escape shortcut as a fallback.
 
-```sh
-cd thundervim
-npm test          # runs the node:test engine suite (zero dependencies)
-```
+## Limitations
 
-The engine suite (`test/engine.test.js`) covers motions, counts, operators,
-undo/redo granularity, visual mode, and the insert/normal handoff. The adapter
-(`src/compose.js`) is verified manually by loading the temporary add-on.
-
-## Project layout
-
-```
-thundervim/
-├── manifest.json         MV3 manifest; injects the compose script + CSS
-├── src/
-│   ├── engine.js         pure vim state machine (no DOM)
-│   ├── compose.js        compose-window adapter (DOM <-> engine)
-│   └── statusbar.css     mode status bar styling
-└── test/
-    └── engine.test.js    node --test unit suite
-```
-
-## Known limitations (v1)
-
-- No `:` ex-commands, marks, named registers, or macros. These are deferred.
-- Search is a literal substring match (no regex) and is not operator-pending
+- No `:` ex-commands, marks, named registers, or macros.
+- Search is a literal (non-regex) substring match and is not operator-pending
   (`d/pat` is unsupported); an empty query repeats the last search.
-- `.` does not repeat Visual-mode operations or search/`n`.
+- `.` does not repeat Visual-mode operations or `n` / search.
 - HTML compose is unsupported.
+
+## Contributing
+
+Bug reports, ideas, and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the architecture, how to run the tests,
+and how to build the package.

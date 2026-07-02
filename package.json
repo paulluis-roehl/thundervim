@@ -4,6 +4,8 @@
   "private": true,
   "description": "Vim keybindings for editing plain-text email in the Thunderbird compose window.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "check": "node --check src/engine.js && node --check src/compose.js",
+    "build": "sh scripts/build.sh"
   }
 }

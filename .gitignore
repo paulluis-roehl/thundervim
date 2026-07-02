@@ -1,0 +1,10 @@
+# Build artifacts
+dist/
+*.xpi
+*.zip
+
+# Node
+node_modules/
+
+# OS cruft
+.DS_Store
