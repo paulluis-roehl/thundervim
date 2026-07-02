@@ -797,6 +797,61 @@ test("% is a no-op when there is no bracket on the line", () => {
   assert.strictEqual(s.cursor, 0);
 });
 
+// ---- gq (reflow) -----------------------------------------------------------
+
+test("gqq wraps a long line at textwidth", () => {
+  const s = normal("aaaa bbbb cccc dddd eeee", 0);
+  s.textwidth = 14;
+  feed(s, ["g", "q", "q"]);
+  assert.strictEqual(s.text, "aaaa bbbb cccc\ndddd eeee");
+});
+
+test("gqip reflows the whole paragraph", () => {
+  const s = normal("one two three\nfour five six\nseven", 0);
+  s.textwidth = 12;
+  feed(s, ["g", "q", "i", "p"]);
+  assert.strictEqual(s.text, "one two\nthree four\nfive six\nseven");
+});
+
+test("gq preserves a quote leader on every wrapped line", () => {
+  const s = normal("> aaaa bbbb cccc dddd", 0);
+  s.textwidth = 12;
+  feed(s, ["g", "q", "q"]);
+  assert.strictEqual(s.text, "> aaaa bbbb\n> cccc dddd");
+});
+
+test("gq lets a word longer than textwidth stand on its own line", () => {
+  const s = normal("hi supercalifragilistic bye", 0);
+  s.textwidth = 10;
+  feed(s, ["g", "q", "q"]);
+  assert.strictEqual(s.text, "hi\nsupercalifragilistic\nbye");
+});
+
+test("gqip stops at a blank line separating paragraphs", () => {
+  const s = normal("aaaa bbbb cccc\n\ndddd eeee", 0);
+  s.textwidth = 9;
+  feed(s, ["g", "q", "i", "p"]);
+  assert.strictEqual(s.text, "aaaa bbbb\ncccc\n\ndddd eeee");
+});
+
+test("visual gq reflows the selected lines", () => {
+  const s = normal("aaaa bbbb cccc dddd", 0);
+  s.textwidth = 12;
+  feed(s, ["V", "g", "q"]);
+  assert.strictEqual(s.text, "aaaa bbbb\ncccc dddd");
+  assert.strictEqual(s.mode, vim.MODE.NORMAL);
+});
+
+test(". repeats gqip", () => {
+  const s = normal("aaaa bbbb cccc dddd\n\neeee ffff gggg hhhh", 0);
+  s.textwidth = 12;
+  feed(s, ["g", "q", "i", "p"]);
+  assert.strictEqual(s.text, "aaaa bbbb\ncccc dddd\n\neeee ffff gggg hhhh");
+  feed(s, "G");
+  feed(s, ".");
+  assert.strictEqual(s.text, "aaaa bbbb\ncccc dddd\n\neeee ffff\ngggg hhhh");
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {

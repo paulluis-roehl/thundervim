@@ -25,6 +25,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
 | Join | `J`, `[count]J`, and `J` over a Visual selection |
 | Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` (spaces, `shiftWidth` in `compose.js`) |
+| Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at `textWidth`, preserves quote leaders like `> `) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
 | Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
 | Replace | `r{char}` |
@@ -89,7 +90,9 @@ var CONFIG = {
   defaultMode: 'insert',              // 'insert' | 'normal'
   toggle: { ctrl: true, alt: true, key: 'v' },
   insertEscapeSequence: 'jk',         // '' to disable
-  escapeTimeoutMs: 500
+  escapeTimeoutMs: 500,
+  shiftWidth: 4,                      // spaces for >> / <<
+  textWidth: 72                       // wrap column for gq
 };
 ```
 

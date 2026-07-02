@@ -29,6 +29,8 @@
     escapeTimeoutMs: 500,
     // Spaces inserted/removed by >> and << (and >{motion} etc.).
     shiftWidth: 4,
+    // Column at which gq wraps paragraphs (mirrors mailnews.wraplength).
+    textWidth: 72,
   };
 
   var engine = globalThis.ThundervimEngine;
@@ -36,6 +38,7 @@
 
   var state = engine.createState("", 0);
   state.shiftwidth = CONFIG.shiftWidth;
+  state.textwidth = CONFIG.textWidth;
   state.mode =
     CONFIG.defaultMode === "normal" ? engine.MODE.NORMAL : engine.MODE.INSERT;
   var enabled = CONFIG.enableOnStart;

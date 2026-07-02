@@ -29,6 +29,7 @@
   };
   var MAX_UNDO = 500;
   var SHIFTWIDTH = 4; // spaces inserted/removed by >> and <<
+  var TEXTWIDTH = 72; // gq wrap column (mirrors Thunderbird's mailnews.wraplength)
 
   // ---- buffer helpers -------------------------------------------------------
 
@@ -548,7 +549,89 @@
     );
   }
 
-  // Apply an operator ('d','c','y','gu','gU','g~','>','<') over a resolved motion.
+  // ---- reflow (gq) ----------------------------------------------------------
+
+  // Leading whitespace plus any run of quote markers, preserved on every
+  // wrapped line so quoted email stays quoted.
+  function leaderOf(line) {
+    var m = /^([ \t]*(?:>+[ \t]*)*)/.exec(line);
+    return m ? m[1] : "";
+  }
+
+  // Reflow one paragraph (array of physical lines) to `width` columns. The
+  // first line's leader is applied to every output line; words never split.
+  function reflowParagraph(para, width) {
+    var leader = leaderOf(para[0]);
+    var words = [];
+    for (var i = 0; i < para.length; i++) {
+      var body = para[i].slice(leaderOf(para[i]).length);
+      var toks = body.split(/\s+/);
+      for (var j = 0; j < toks.length; j++)
+        if (toks[j].length) words.push(toks[j]);
+    }
+    if (!words.length) return para.slice();
+    var out = [];
+    var cur = leader + words[0];
+    for (var k = 1; k < words.length; k++) {
+      if (cur.length + 1 + words[k].length > width) {
+        out.push(cur);
+        cur = leader + words[k];
+      } else {
+        cur += " " + words[k];
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  // Reflow every paragraph overlapping physical lines [lo, hi]. Blank
+  // (whitespace-only) lines separate paragraphs and pass through untouched.
+  function formatLines(state, lo, hi) {
+    var lines = buildLines(state.text);
+    var content = [];
+    for (var i = 0; i < lines.length; i++)
+      content.push(state.text.slice(lines[i].start, lines[i].end));
+    var width = state.textwidth || TEXTWIDTH;
+    var out = [];
+    var p = lo;
+    while (p <= hi) {
+      if (content[p].replace(/[ \t]/g, "") === "") {
+        out.push(content[p]);
+        p++;
+        continue;
+      }
+      var para = [];
+      while (p <= hi && content[p].replace(/[ \t]/g, "") !== "") {
+        para.push(content[p]);
+        p++;
+      }
+      var reflowed = reflowParagraph(para, width);
+      for (var q = 0; q < reflowed.length; q++) out.push(reflowed[q]);
+    }
+    var merged = content.slice(0, lo).concat(out, content.slice(hi + 1));
+    state.text = merged.join("\n");
+    var nlines = buildLines(state.text);
+    var target = Math.min(nlines.length - 1, lo + out.length - 1);
+    state.cursor = clampNormal(
+      state.text,
+      firstNonBlank(state.text, nlines[target].start),
+    );
+  }
+
+  // Visual-mode gq: reflow the line span covered by the selection.
+  function formatVisual(state) {
+    var lines = buildLines(state.text);
+    var a = lineOf(lines, state.anchor);
+    var b = lineOf(lines, state.cursor);
+    pushUndo(state);
+    formatLines(state, Math.min(a, b), Math.max(a, b));
+    state.anchor = null;
+    state.mode = MODE.NORMAL;
+    resetPending(state);
+    return { state: state, handled: true };
+  }
+
+  // Apply an operator ('d','c','y','gu','gU','g~','>','<','gq') over a motion.
   function applyOperator(state, op, motion) {
     if (op === ">" || op === "<") {
       var sl = buildLines(state.text);
@@ -561,6 +644,13 @@
         Math.max(sa, sb),
         1,
       );
+      return;
+    }
+    if (op === "gq") {
+      var ql = buildLines(state.text);
+      var qa = lineOf(ql, state.cursor);
+      var qb = lineOf(ql, motion.pos);
+      formatLines(state, Math.min(qa, qb), Math.max(qa, qb));
       return;
     }
     var caseKind = caseKindOf(op);
@@ -649,6 +739,13 @@
         Math.max(ra, rb),
         1,
       );
+      return;
+    }
+    if (op === "gq") {
+      var gl = buildLines(state.text);
+      var ga = lineOf(gl, start);
+      var gb = lineOf(gl, Math.max(start, end - 1));
+      formatLines(state, Math.min(ga, gb), Math.max(ga, gb));
       return;
     }
     var caseKind = caseKindOf(op);
@@ -1029,6 +1126,13 @@
         state.pending.op = gop;
         return { state: state, handled: true };
       }
+      if (key === "q") {
+        if (state.mode === MODE.VISUAL || state.mode === MODE.VLINE) {
+          return formatVisual(state);
+        }
+        state.pending.op = "gq";
+        return { state: state, handled: true };
+      }
       resetPending(state);
       return { state: state, handled: true };
     }
@@ -1073,6 +1177,17 @@
         var shi = Math.min(slines.length - 1, sli + sc - 1);
         pushUndo(state);
         shiftLines(state, op === ">" ? 1 : -1, sli, shi, 1);
+        resetPending(state);
+        return { state: state, handled: true };
+      }
+      // Doubled reflow (gqq): count lines.
+      if (op === "gq" && key === "q") {
+        var qc = effectiveCount(state);
+        var qlines = buildLines(state.text);
+        var qli = lineOf(qlines, state.cursor);
+        var qhi = Math.min(qlines.length - 1, qli + qc - 1);
+        pushUndo(state);
+        formatLines(state, qli, qhi);
         resetPending(state);
         return { state: state, handled: true };
       }
@@ -1606,6 +1721,7 @@
       anchor: null,
       lastFind: null,
       shiftwidth: SHIFTWIDTH,
+      textwidth: TEXTWIDTH,
       search: { query: "", dir: 1 },
       hlsearch: false,
       lastSearchInfo: null,
