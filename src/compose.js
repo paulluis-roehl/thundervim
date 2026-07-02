@@ -273,15 +273,35 @@
     ensureTrailingPad(state.text);
   }
 
-  // After the app handled a Cmd chord (paste/cut/undo) in Normal/Visual mode,
-  // pull the engine's buffer back in line with the DOM. A pure formatting or
-  // copy command leaves the text unchanged, so we no-op and keep the current
-  // mode/cursor/selection intact.
+  // After the app handled a Cmd chord (paste/cut/undo) in Normal mode, pull the
+  // engine's buffer back in line with the DOM. A pure formatting or copy command
+  // leaves the text unchanged, so we no-op and keep the current mode/cursor.
   function resyncFromDom() {
     var b = readBuffer();
     if (!b || b.text === state.text) return;
     engine.syncFromEditor(state, b.text, b.caret);
     state.mode = engine.MODE.NORMAL;
+    syncDom(false);
+    updateBar();
+  }
+
+  // After a Cmd chord applied to the vim visual selection: a formatting/copy
+  // command leaves the text intact (land on the selection start, like a vim
+  // operator), while a paste/cut replaces it (resync from the DOM). Either way
+  // we drop back to Normal mode and collapse the native selection.
+  function afterVisualMeta(caretOffset) {
+    var b = readBuffer();
+    if (!b) return;
+    if (b.text !== state.text) {
+      engine.syncFromEditor(state, b.text, b.caret);
+    } else {
+      state.text = b.text;
+      var last = b.text.length > 0 ? b.text.length - 1 : 0;
+      state.cursor = caretOffset < last ? caretOffset : last;
+    }
+    state.mode = engine.MODE.NORMAL;
+    state.anchor = null;
+    setNativeCaret(state.cursor);
     syncDom(false);
     updateBar();
   }
@@ -504,6 +524,22 @@
       return null;
     }
     return r;
+  }
+
+  // Put the real DOM selection over [start, end) so a native command issued next
+  // (Cmd+B/I/U, copy, cut, paste) acts on the vim visual selection -- which is
+  // otherwise only an overlay while the native selection stays collapsed.
+  function selectRangeInDom(start, end) {
+    var r = buildDomRange(start, end);
+    if (!r) return false;
+    try {
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return true;
+    } catch (err) {
+      return false;
+    }
   }
 
   function ensureHighlights() {
@@ -914,12 +950,24 @@
     // Cmd (meta) chords belong to the application, not vim. macOS binds Cmd+B/
     // I/U to Bold/Italic/Underline and Cmd+C/V/X/Z to clipboard & undo; vim has
     // no Cmd bindings. Never swallow these in any mode, or e.g. Cmd+B is read as
-    // the `b` motion and the formatting command never reaches Thunderbird. In
-    // Normal/Visual mode a native edit (paste/cut/undo) can change the buffer,
-    // so resync the engine from the DOM afterwards to avoid desync. Format and
-    // copy leave the text unchanged and preserve the current mode/selection.
+    // the `b` motion and the formatting command never reaches Thunderbird.
     if (ev.meta) {
-      if (state.mode !== engine.MODE.INSERT) setTimeout(resyncFromDom, 0);
+      var vis =
+        state.mode === engine.MODE.VISUAL || state.mode === engine.MODE.VLINE;
+      if (vis) {
+        // The visual selection is only an overlay; the native selection stays
+        // collapsed. Materialize it now so the command acts on the highlighted
+        // text, then reconcile on the next tick.
+        var sr = selectionRange();
+        var caret = sr ? sr.start : state.cursor;
+        if (sr) selectRangeInDom(sr.start, sr.end);
+        setTimeout(function () {
+          afterVisualMeta(caret);
+        }, 0);
+      } else if (state.mode !== engine.MODE.INSERT) {
+        // A native edit (paste/cut/undo) can change the buffer; resync after.
+        setTimeout(resyncFromDom, 0);
+      }
       return;
     }
 
