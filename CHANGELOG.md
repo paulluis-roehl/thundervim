@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.2.0
+
+New editing commands and a batch of rich-text (HTML) fixes.
+
+### Added
+
+- **Sentence text object** `s`: `das`, `dis`, `cas`, `cis`, `yas`, and Visual
+  `as` / `is`. A sentence ends at `.`, `!`, or `?` (with any trailing `)`, `]`,
+  `"`, `'`) followed by whitespace, and never crosses a blank line.
+- **`r<Enter>`** replaces the character under the cursor with a newline, so you
+  can break a line in place (e.g. turn a space into a line break). Works with a
+  count (`3r<Enter>` collapses several characters into one break).
+
+### Fixed
+
+- Formatting shortcuts and the toolbar work again in HTML compose windows.
+  `Cmd`/`Ctrl` + B/I/U now apply to the vim Visual selection, and clicking a
+  toolbar button no longer stops working after a vim edit.
+- Clipboard and undo shortcuts (`Cmd`/`Ctrl` + C/V/X/Z) pass through cleanly in
+  every mode, with the engine resyncing after a native edit so vim motions stay
+  accurate.
+
 ## v0.1.0 — first release
 
 **Welcome to ThunderVIM!**
