@@ -3,17 +3,18 @@
 Vim keybindings for editing email in Thunderbird's compose window.
 
 Write email the way you edit code: Normal / Insert / Visual modes, motions,
-operators, text objects, search, and paragraph reflow — all inside the
-Thunderbird composer, with a mode line and block cursor to match. Works in both
-plain-text and rich-text (HTML) compose windows; in HTML, existing formatting
-(quoted replies, signatures, bold, links) is preserved while you edit the text.
+operators, text objects, search, and paragraph reflow, all inside the
+Thunderbird composer, with a mode line and block cursor to match. It works in
+both plain-text and rich-text (HTML) compose windows. In HTML, your existing
+formatting (quoted replies, signatures, bold, links) stays intact while you edit
+the text.
 
 ## Requirements
 
 - **Thunderbird 151 or newer** (developed and tested against 152).
 - Works in both plain-text and HTML compose windows. Plain text is the most
-  battle-tested; HTML support preserves formatting but is newer — see
-  [Rich text (HTML)](#rich-text-html).
+  battle-tested; HTML support keeps your formatting but is newer (see
+  [Rich text (HTML)](#rich-text-html)).
 
 ## Install
 
@@ -28,7 +29,7 @@ signed, so they survive restarts and update automatically. *(Listing pending.)*
 You can load the add-on without signing; it stays until you restart Thunderbird.
 
 1. Download `thundervim-<version>.xpi` from the
-   [Releases](../../releases) page (or build it yourself — see
+   [Releases](../../releases) page (or build it yourself, see
    [CONTRIBUTING.md](CONTRIBUTING.md)).
 2. In Thunderbird: **Tools → Developer Tools → Debug Add-ons**
    (or open `about:debugging#/runtime/this-firefox`).
@@ -48,8 +49,8 @@ Thundervim works in both compose modes:
   **Settings → Composition** (or per-account *Account Settings → Composition &
   Addressing* → uncheck *Compose messages in HTML format*).
 - **HTML** is supported by editing the text in place while leaving existing
-  markup untouched: quote levels, signatures, bold, links, and other formatting
-  are preserved as you navigate and edit. Vim itself doesn't *author* new rich
+  markup alone: quote levels, signatures, bold, links, and other formatting
+  survive as you navigate and edit. Vim itself doesn't *author* new rich
   formatting (that isn't a vim concept), but Thunderbird's own shortcuts
   (`Ctrl-B`, etc.) still work in Insert mode.
 
@@ -81,7 +82,7 @@ misbehaves on a complex message, please file an issue.
 | Toggle on/off | `Ctrl-Alt-V` |
 
 Counts combine with operators (e.g. `2dd`, `d3w`). Yank/paste use an internal
-register, so `y` / `p` never touch your system clipboard — **nothing you edit
+register, so `y` / `p` never touch your system clipboard. **Nothing you edit
 leaves your machine.**
 
 ## Modes and the status bar
@@ -104,7 +105,7 @@ leaves your machine.**
 ## Configuration
 
 Thundervim has no options screen yet. The tunables are constants at the top of
-`src/compose.js` — edit them and reload the add-on:
+`src/compose.js`. Edit them and reload the add-on:
 
 ```js
 var CONFIG = {
@@ -128,7 +129,7 @@ classic escape shortcut as a fallback.
 - Search is a literal (non-regex) substring match and is not operator-pending
   (`d/pat` is unsupported); an empty query repeats the last search.
 - `.` does not repeat Visual-mode operations or `n` / search.
-- In HTML, vim edits existing text and preserves formatting but does not author
+- In HTML, vim edits existing text and keeps your formatting but does not author
   new rich formatting (bold/italic/lists) on its own.
 
 ## Contributing
