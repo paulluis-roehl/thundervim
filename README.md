@@ -18,12 +18,15 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Group | Keys |
 | --- | --- |
 | Motions | `h j k l`, `w W b B e E`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
+| Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (compose: `df,`, `ct)`) |
 | Enter insert | `i a I A o O` |
 | Delete | `x`, `dd`, `d{motion}`, `D` |
 | Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
 | Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
 | Replace | `r{char}` |
+| Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
+| Search | `/pat` `?pat` (literal, smartcase), `n` / `N` to step with wrap; matches highlight live while typing and persist until `Esc` |
 | Undo / redo | `u`, `Ctrl-r` |
 | Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
 | Leave insert | `Esc`, or the `jk` sequence |
@@ -112,6 +115,8 @@ thundervim/
 
 ## Known limitations (v1)
 
-- No `/` search, `:` ex-commands, `f/F/t/T`, marks, named registers, macros, or
-  `.` dot-repeat. These were deliberately deferred.
+- No `:` ex-commands, marks, named registers, or macros. These are deferred.
+- Search is a literal substring match (no regex) and is not operator-pending
+  (`d/pat` is unsupported); an empty query repeats the last search.
+- `.` does not repeat Visual-mode operations or search/`n`.
 - HTML compose is unsupported.

@@ -37,6 +37,13 @@
     CONFIG.defaultMode === "normal" ? engine.MODE.NORMAL : engine.MODE.INSERT;
   var enabled = CONFIG.enableOnStart;
   var lastInsert = { key: null, time: 0 };
+  // Snapshot of the buffer at the moment Insert mode is entered from a command,
+  // used to recover the typed text for dot-repeat when Insert mode exits.
+  var insertStart = null;
+  // Active `/` or `?` prompt: { dir: 1|-1, query: string }, or null.
+  var searching = null;
+  // Transient status-bar note (e.g. "pattern not found"), shown until next key.
+  var searchMsg = "";
   // Set when we consume a key; used to cancel the editor's resulting text-input
   // edit. Thunderbird's editor inserts characters via `beforeinput`, which a
   // content-script `keydown` preventDefault() does not cancel on its own.
@@ -320,31 +327,57 @@
   function updateHighlights() {
     var cont = ensureHighlights();
     while (cont.firstChild) cont.removeChild(cont.firstChild);
-    var visual =
-      enabled &&
-      (state.mode === engine.MODE.VISUAL || state.mode === engine.MODE.VLINE);
-    if (!visual) {
+    if (!enabled) {
       cont.style.display = "none";
       return;
     }
-    var sr = selectionRange();
-    var range = sr ? buildDomRange(sr.start, sr.end) : null;
-    if (!range) {
+
+    var ranges = [];
+    // Search matches: live preview while typing a query, else persisted hits.
+    var sq = searching
+      ? searching.query
+      : state.hlsearch
+        ? state.search.query
+        : "";
+    if (sq) {
+      var matches = engine.computeMatches(state.text, sq);
+      for (var mi = 0; mi < matches.length; mi++) {
+        ranges.push({
+          start: matches[mi].start,
+          end: matches[mi].end,
+          cls: "thundervim-search-hl",
+        });
+      }
+    }
+    // Visual selection.
+    var visual =
+      state.mode === engine.MODE.VISUAL || state.mode === engine.MODE.VLINE;
+    if (visual) {
+      var sr = selectionRange();
+      if (sr)
+        ranges.push({ start: sr.start, end: sr.end, cls: "thundervim-hl" });
+    }
+
+    if (!ranges.length) {
       cont.style.display = "none";
       return;
     }
     cont.style.display = "block";
-    var rects = range.getClientRects();
-    for (var i = 0; i < rects.length; i++) {
-      var r = rects[i];
-      if (r.height <= 0) continue;
-      var d = document.createElement("div");
-      d.className = "thundervim-hl";
-      d.style.left = r.left + "px";
-      d.style.top = r.top + "px";
-      d.style.width = (r.width > 0 ? r.width : 8) + "px";
-      d.style.height = r.height + "px";
-      cont.appendChild(d);
+    for (var ri = 0; ri < ranges.length; ri++) {
+      var range = buildDomRange(ranges[ri].start, ranges[ri].end);
+      if (!range) continue;
+      var rects = range.getClientRects();
+      for (var i = 0; i < rects.length; i++) {
+        var r = rects[i];
+        if (r.height <= 0) continue;
+        var d = document.createElement("div");
+        d.className = ranges[ri].cls;
+        d.style.left = r.left + "px";
+        d.style.top = r.top + "px";
+        d.style.width = (r.width > 0 ? r.width : 8) + "px";
+        d.style.height = r.height + "px";
+        cont.appendChild(d);
+      }
     }
   }
 
@@ -394,7 +427,18 @@
       render();
       return;
     }
-    bar.textContent = "-- " + modeLabel() + " --" + pendingHint();
+    if (searching) {
+      bar.textContent = (searching.dir > 0 ? "/" : "?") + searching.query;
+      bar.setAttribute("data-mode", "search");
+      render();
+      return;
+    }
+    bar.textContent =
+      "-- " +
+      modeLabel() +
+      " --" +
+      pendingHint() +
+      (searchMsg ? "  " + searchMsg : "");
     bar.setAttribute("data-mode", state.mode);
     render();
   }
@@ -437,6 +481,30 @@
     );
   }
 
+  // The net text inserted between two buffer snapshots (common prefix/suffix).
+  function diffInsert(before, after) {
+    var max = Math.min(before.length, after.length);
+    var p = 0;
+    while (p < max && before.charCodeAt(p) === after.charCodeAt(p)) p++;
+    var sfx = 0;
+    while (
+      sfx < max - p &&
+      before.charCodeAt(before.length - 1 - sfx) ===
+        after.charCodeAt(after.length - 1 - sfx)
+    )
+      sfx++;
+    return after.slice(p, after.length - sfx);
+  }
+
+  // Report the text typed during the just-ended Insert session to the engine so
+  // `.` can replay it, then clear the snapshot.
+  function finalizeInsert(finalText) {
+    if (insertStart) {
+      engine.finishInsert(state, diffInsert(insertStart.text, finalText));
+      insertStart = null;
+    }
+  }
+
   // Handle the "jk" style escape sequence while in Insert mode. Returns true if
   // the event was consumed.
   function handleInsertEscape(e, ev) {
@@ -461,6 +529,7 @@
         text = text.slice(0, caret - 1) + text.slice(caret);
         caret = caret - 1;
       }
+      finalizeInsert(text);
       engine.syncFromEditor(state, text, caret);
       state.mode = engine.MODE.NORMAL;
       state.cursor = engine.clampNormal(text, caret - 1);
@@ -471,6 +540,63 @@
     }
     lastInsert = { key: ev.key, time: now };
     return false;
+  }
+
+  // ------------------------------------------------------------ search prompt
+
+  function beginSearch(dir) {
+    searching = { dir: dir, query: "" };
+    searchMsg = "";
+    updateBar();
+  }
+
+  function searchMessage(info) {
+    if (!info || !info.found) {
+      return "Pattern not found: " + (state.search.query || "");
+    }
+    if (info.wrapped) {
+      return state.search.dir > 0
+        ? "search hit BOTTOM, continuing at TOP"
+        : "search hit TOP, continuing at BOTTOM";
+    }
+    return "";
+  }
+
+  // Consume a key while the `/`|`?` prompt is open. Returns nothing; always
+  // swallows the event.
+  function handleSearchKey(e, ev) {
+    swallow(e);
+    if (ev.key === "Escape") {
+      searching = null;
+      searchMsg = "";
+      updateBar();
+      return;
+    }
+    if (ev.key === "Enter") {
+      var q = searching.query;
+      var dir = searching.dir;
+      searching = null;
+      var info = engine.setSearch(state, q, dir);
+      searchMsg = searchMessage(info);
+      writeBuffer(state.text, state.cursor);
+      updateBar();
+      return;
+    }
+    if (ev.key === "Backspace") {
+      if (searching.query.length > 0) {
+        searching.query = searching.query.slice(0, -1);
+      } else {
+        searching = null; // backspace past the prompt cancels
+      }
+      updateBar();
+      return;
+    }
+    if (!ev.ctrl && !ev.meta && !ev.alt && ev.key.length === 1) {
+      searching.query += ev.key;
+      updateBar();
+      return;
+    }
+    // Ignore anything else (arrows, function keys) but keep the prompt open.
   }
 
   function onKeydown(e) {
@@ -506,9 +632,16 @@
       return;
     }
 
+    // The search prompt owns every key while it is open.
+    if (searching) {
+      handleSearchKey(e, ev);
+      return;
+    }
+
     if (state.mode === engine.MODE.INSERT) {
       if (ev.key === "Escape") {
         var buf = readBuffer();
+        finalizeInsert(buf.text);
         // Keep the raw insert caret (it may sit past the last char); the engine's
         // Escape handler performs the single Normal-mode "move left".
         state.text = buf.text;
@@ -525,6 +658,18 @@
       return; // let the native editor type
     }
 
+    // Open the search prompt (`/` forward, `?` backward) from Normal mode.
+    if (
+      state.mode === engine.MODE.NORMAL &&
+      (ev.key === "/" || ev.key === "?")
+    ) {
+      swallow(e);
+      beginSearch(ev.key === "/" ? 1 : -1);
+      return;
+    }
+    // A fresh action clears any lingering search message.
+    searchMsg = "";
+
     // Normal / Visual: the engine's state is authoritative here (we are the only
     // thing editing the buffer), so we do NOT re-read the caret from the DOM per
     // key — doing so lets Gecko's caret normalization on empty lines desync
@@ -535,6 +680,15 @@
       return; // modifier chords etc. pass through to Thunderbird
     }
     swallow(e);
+    // n/N surface a wrap / not-found note in the status bar.
+    if (ev.key === "n" || ev.key === "N") {
+      searchMsg = searchMessage(state.lastSearchInfo);
+    }
+    // A command just entered Insert mode: snapshot the buffer so the typed text
+    // can be recovered for dot-repeat when Insert mode exits.
+    if (state.mode === engine.MODE.INSERT) {
+      insertStart = { text: state.text, cursor: state.cursor };
+    }
     writeBuffer(state.text, state.cursor);
     updateBar();
   }

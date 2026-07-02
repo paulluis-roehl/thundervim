@@ -373,6 +373,45 @@
     return { pos: L.start + c, desiredCol: col };
   }
 
+  // f/F/t/T: search within the current line for `ch`. Returns a motion object
+  // ({ pos, kind }) or null if not found. `repeat` distinguishes a `;`/`,`
+  // repeat (which steps over an adjacent match so t/T don't get stuck).
+  function findMotion(text, pos, cmd, ch, count, repeat) {
+    var ls = lineStartAt(text, pos);
+    var le = lineEndAt(text, pos);
+    var c = count || 1;
+    var i,
+      target = -1;
+    if (cmd === "f" || cmd === "t") {
+      i = pos + 1;
+      if (cmd === "t" && repeat && i < le && text[i] === ch) i++;
+      for (; i < le; i++) {
+        if (text[i] === ch && --c === 0) {
+          target = i;
+          break;
+        }
+      }
+      if (target < 0) return null;
+      if (cmd === "t") target -= 1;
+      return { pos: target, kind: "incl" };
+    } else {
+      i = pos - 1;
+      if (cmd === "T" && repeat && i >= ls && text[i] === ch) i--;
+      for (; i >= ls; i--) {
+        if (text[i] === ch && --c === 0) {
+          target = i;
+          break;
+        }
+      }
+      if (target < 0) return null;
+      if (cmd === "T") target += 1;
+      return { pos: target, kind: "excl" };
+    }
+  }
+  function reverseFind(cmd) {
+    return { f: "F", F: "f", t: "T", T: "t" }[cmd];
+  }
+
   // ---- mutation core --------------------------------------------------------
 
   function pushUndo(state) {
@@ -524,7 +563,43 @@
       g: false,
       replace: false,
       textobj: null,
+      find: null,
     };
+  }
+
+  // Apply a resolved motion object as an operator target (if one is pending) or
+  // as a plain cursor move. Clears pending state afterwards.
+  function dispatchMotion(state, motion) {
+    if (motion) {
+      if (state.pending.op) {
+        pushUndo(state);
+        applyOperator(state, state.pending.op, motion);
+      } else {
+        state.desiredCol = null;
+        state.cursor = clampNormal(state.text, motion.pos);
+      }
+    }
+    resetPending(state);
+    return { state: state, handled: true };
+  }
+
+  // `;` / `,`: repeat the last f/F/t/T. `reverse` flips the direction (`,`).
+  function repeatFind(state, reverse) {
+    if (!state.lastFind) {
+      resetPending(state);
+      return { state: state, handled: true };
+    }
+    var cmd = reverse ? reverseFind(state.lastFind.cmd) : state.lastFind.cmd;
+    var count = effectiveCount(state);
+    var m = findMotion(
+      state.text,
+      state.cursor,
+      cmd,
+      state.lastFind.char,
+      count,
+      true,
+    );
+    return dispatchMotion(state, m);
   }
   function currentCount(state) {
     return state.pending.op ? state.pending.opCount : state.pending.count;
@@ -561,7 +636,123 @@
     G: 1,
   };
 
+  // ---- dot-repeat recording -------------------------------------------------
+
+  function leadingCountLen(seq) {
+    if (!seq.length || !/[1-9]/.test(seq[0])) return 0;
+    var n = 1;
+    while (n < seq.length && /[0-9]/.test(seq[n])) n++;
+    return n;
+  }
+  function stripLeadingCount(seq) {
+    return seq.slice(leadingCountLen(seq));
+  }
+  function leadingCount(seq) {
+    var n = leadingCountLen(seq);
+    return n ? parseInt(seq.slice(0, n).join(""), 10) : 0;
+  }
+  // True while the engine is mid-command and expecting more keys.
+  function pendingActive(state) {
+    var p = state.pending;
+    return !!(
+      p.op ||
+      p.replace ||
+      p.textobj ||
+      p.find ||
+      p.g ||
+      p.count ||
+      p.opCount
+    );
+  }
+
+  // Public entry point. Wraps handleKeyInner with change recording so `.` can
+  // replay the last buffer-modifying command.
   function handleKey(state, ev) {
+    if (state._replaying) return handleKeyInner(state, ev);
+
+    var key = ev.key;
+    var wasInsert = state.mode === MODE.INSERT;
+    var beforeMode = state.mode;
+    var beforeText = state.text;
+    state._noRecord = false;
+
+    // Only sequences that begin in Normal mode are dot-recordable.
+    if (!wasInsert && beforeMode === MODE.NORMAL && key !== "Escape") {
+      state._seq.push(key);
+    }
+
+    var res = handleKeyInner(state, ev);
+
+    if (key === "Escape") {
+      state._seq = [];
+    } else if (!wasInsert && beforeMode === MODE.NORMAL) {
+      if (state.mode === MODE.INSERT) {
+        // A command opened Insert mode; the typed text is captured on Escape.
+        state._insertPending = {
+          keys: stripLeadingCount(state._seq),
+          count: leadingCount(state._seq),
+        };
+        state._seq = [];
+      } else if (!pendingActive(state)) {
+        if (state.text !== beforeText && !state._noRecord) {
+          state._dot = {
+            keys: stripLeadingCount(state._seq),
+            count: leadingCount(state._seq),
+            insertText: null,
+          };
+        }
+        state._seq = [];
+      }
+      // else: still mid-command, keep accumulating into _seq.
+    } else if (beforeMode !== MODE.NORMAL && state.mode !== MODE.INSERT) {
+      // Visual-mode commands are not dot-recorded (v1).
+      state._seq = [];
+    }
+    return res;
+  }
+
+  // Called by the adapter when leaving Insert mode, with the text that was typed
+  // during the insert session. Finalizes a pending insert-based change for `.`.
+  function finishInsert(state, insertText) {
+    if (state._insertPending) {
+      state._dot = {
+        keys: state._insertPending.keys,
+        count: state._insertPending.count,
+        insertText: insertText || "",
+      };
+      state._insertPending = null;
+    }
+  }
+
+  // `.` : replay the last recorded change. `countOverride` (>0) replaces the
+  // recorded count, matching vim.
+  function repeatDot(state, countOverride) {
+    var dot = state._dot;
+    if (!dot) return;
+    var saved = state._dot;
+    state._replaying = true;
+    resetPending(state);
+    try {
+      var count = countOverride || dot.count || 0;
+      var seq = (count ? String(count).split("") : []).concat(dot.keys);
+      for (var i = 0; i < seq.length; i++)
+        handleKeyInner(state, { key: seq[i] });
+      if (state.mode === MODE.INSERT) {
+        if (dot.insertText) {
+          replaceRange(state, state.cursor, state.cursor, dot.insertText);
+          state.cursor += dot.insertText.length;
+        }
+        state.mode = MODE.NORMAL;
+        state.cursor = clampNormal(state.text, state.cursor - 1);
+      }
+    } finally {
+      state._replaying = false;
+      state._dot = saved;
+      resetPending(state);
+    }
+  }
+
+  function handleKeyInner(state, ev) {
     var key = ev.key;
 
     // In Insert mode the native editor owns typing; only Escape is ours.
@@ -577,6 +768,7 @@
 
     // Ctrl-r = redo (the one modifier chord we consume inside the editor).
     if (ev.ctrl && (key === "r" || key === "R")) {
+      state._noRecord = true;
       redo(state);
       resetPending(state);
       return { state: state, handled: true };
@@ -589,6 +781,7 @@
     if (key === "Escape") {
       state.mode = MODE.NORMAL;
       state.anchor = null;
+      state.hlsearch = false;
       resetPending(state);
       return { state: state, handled: true };
     }
@@ -636,6 +829,25 @@
       return { state: state, handled: true };
     }
 
+    // Awaiting the target char for f/F/t/T.
+    if (state.pending.find) {
+      if (key.length === 1) {
+        state.lastFind = { cmd: state.pending.find, char: key };
+        var fcount = effectiveCount(state);
+        var fm = findMotion(
+          state.text,
+          state.cursor,
+          state.pending.find,
+          key,
+          fcount,
+          false,
+        );
+        return dispatchMotion(state, fm);
+      }
+      resetPending(state);
+      return { state: state, handled: true };
+    }
+
     // Count accumulation ("0" is a motion unless a count is already building).
     if (/[0-9]/.test(key) && !(key === "0" && !currentCount(state))) {
       if (state.pending.op) state.pending.opCount += key;
@@ -662,6 +874,12 @@
         state.pending.textobj = key;
         return { state: state, handled: true };
       }
+      if (key === "f" || key === "F" || key === "t" || key === "T") {
+        state.pending.find = key;
+        return { state: state, handled: true };
+      }
+      if (key === ";") return repeatFind(state, false);
+      if (key === ",") return repeatFind(state, true);
       if (key === op) {
         var cnt = effectiveCount(state);
         pushUndo(state);
@@ -852,7 +1070,33 @@
       case "r":
         state.pending.replace = true;
         return { state: state, handled: true };
+      case "f":
+      case "F":
+      case "t":
+      case "T":
+        state.pending.find = key;
+        return { state: state, handled: true };
+      case ";":
+        return repeatFind(state, false);
+      case ",":
+        return repeatFind(state, true);
+      case ".": {
+        state._noRecord = true;
+        var dotCount = effectiveCount(state);
+        repeatDot(state, state._hadCount ? dotCount : 0);
+        resetPending(state);
+        return { state: state, handled: true };
+      }
+      case "n":
+        searchNext(state, false);
+        resetPending(state);
+        return { state: state, handled: true };
+      case "N":
+        searchNext(state, true);
+        resetPending(state);
+        return { state: state, handled: true };
       case "u":
+        state._noRecord = true;
         undo(state);
         resetPending(state);
         return { state: state, handled: true };
@@ -959,6 +1203,79 @@
     state.cursor = clampNormal(state.text, s.cursor);
   }
 
+  // ---- search ---------------------------------------------------------------
+
+  // Literal, smartcase substring matches. Case-insensitive unless the query
+  // contains an uppercase letter. Returns non-overlapping { start, end } ranges.
+  function computeMatches(text, query) {
+    if (!query) return [];
+    var n = query.length;
+    if (n === 0) return [];
+    var insensitive = !/[A-Z]/.test(query);
+    var hay = insensitive ? text.toLowerCase() : text;
+    var needle = insensitive ? query.toLowerCase() : query;
+    var out = [],
+      i = 0,
+      idx;
+    while ((idx = hay.indexOf(needle, i)) >= 0) {
+      out.push({ start: idx, end: idx + n });
+      i = idx + n;
+    }
+    return out;
+  }
+
+  // Move the cursor to the next match in `dir` (+1 forward, -1 backward),
+  // wrapping around the buffer ends.
+  function searchJump(state, dir) {
+    var m = computeMatches(state.text, state.search.query);
+    if (!m.length) return { found: false, wrapped: false, total: 0 };
+    var cur = state.cursor,
+      target = -1,
+      wrapped = false,
+      i;
+    if (dir > 0) {
+      for (i = 0; i < m.length; i++)
+        if (m[i].start > cur) {
+          target = i;
+          break;
+        }
+      if (target < 0) {
+        target = 0;
+        wrapped = true;
+      }
+    } else {
+      for (i = m.length - 1; i >= 0; i--)
+        if (m[i].start < cur) {
+          target = i;
+          break;
+        }
+      if (target < 0) {
+        target = m.length - 1;
+        wrapped = true;
+      }
+    }
+    state.cursor = clampNormal(state.text, m[target].start);
+    return { found: true, wrapped: wrapped, total: m.length, index: target };
+  }
+
+  // Commit a `/` or `?` search. An empty query reuses the previous one.
+  function setSearch(state, query, dir) {
+    if (query) state.search.query = query;
+    state.search.dir = dir || 1;
+    state.hlsearch = true;
+    state.lastSearchInfo = searchJump(state, state.search.dir);
+    return state.lastSearchInfo;
+  }
+
+  // `n` / `N`: repeat the last search. `reverse` flips the stored direction.
+  function searchNext(state, reverse) {
+    if (!state.search.query) return { found: false, wrapped: false, total: 0 };
+    state.hlsearch = true;
+    var dir = reverse ? -state.search.dir : state.search.dir;
+    state.lastSearchInfo = searchJump(state, dir);
+    return state.lastSearchInfo;
+  }
+
   // ---- construction / sync --------------------------------------------------
 
   function createState(text, cursor) {
@@ -971,8 +1288,25 @@
       redoStack: [],
       desiredCol: null,
       anchor: null,
-      pending: { count: "", op: null, opCount: "", g: false, replace: false },
+      lastFind: null,
+      search: { query: "", dir: 1 },
+      hlsearch: false,
+      lastSearchInfo: null,
+      pending: {
+        count: "",
+        op: null,
+        opCount: "",
+        g: false,
+        replace: false,
+        textobj: null,
+        find: null,
+      },
       _hadCount: false,
+      _seq: [],
+      _dot: null,
+      _insertPending: null,
+      _replaying: false,
+      _noRecord: false,
     };
     // Default mode is Insert, where the cursor may legitimately sit at EOL, so
     // only bound it to the buffer rather than applying Normal-mode clamping.
@@ -993,6 +1327,10 @@
     MODE: MODE,
     createState: createState,
     handleKey: handleKey,
+    finishInsert: finishInsert,
+    setSearch: setSearch,
+    searchNext: searchNext,
+    computeMatches: computeMatches,
     syncFromEditor: syncFromEditor,
     clampNormal: clampNormal,
     lineStartAt: lineStartAt,

@@ -40,6 +40,10 @@
     background: #4a4a4a;
     color: #bdbdbd;
 }
+#thundervim-status[data-mode="search"] {
+    background: #202225;
+    color: #ffd54f; /* amber prompt line */
+}
 
 /* Fake block cursor for Normal / Visual mode. `mix-blend-mode: difference`
  * inverts whatever is underneath, so it reads as a classic block cursor on top
@@ -62,5 +66,13 @@
     position: fixed;
     z-index: 2147483645;
     background: rgba(120, 160, 255, 0.4);
+    pointer-events: none;
+}
+
+/* Search-match highlight (hlsearch). Amber to distinguish from visual blue. */
+.thundervim-search-hl {
+    position: fixed;
+    z-index: 2147483644;
+    background: rgba(255, 213, 79, 0.4);
     pointer-events: none;
 }

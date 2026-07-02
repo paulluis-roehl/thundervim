@@ -369,3 +369,259 @@ test("dip deletes the inner paragraph", () => {
   feed(s, ["d", "i", "p"]);
   assert.strictEqual(s.text, "\n\nc");
 });
+
+// ---- f/F/t/T and ; , -------------------------------------------------------
+
+test("f moves to the next occurrence on the line", () => {
+  const s = normal("foo.bar.baz", 0);
+  feed(s, ["f", "."]);
+  assert.strictEqual(s.cursor, 3);
+  feed(s, ["f", "."]);
+  assert.strictEqual(s.cursor, 7);
+});
+
+test("f with a count skips occurrences", () => {
+  const s = normal("a.b.c.d", 0);
+  feed(s, ["2", "f", "."]);
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("f stays put when the char is not on the line", () => {
+  const s = normal("abc", 0);
+  feed(s, ["f", "z"]);
+  assert.strictEqual(s.cursor, 0);
+});
+
+test("F searches backward", () => {
+  const s = normal("foo.bar.baz", 10);
+  feed(s, ["F", "."]);
+  assert.strictEqual(s.cursor, 7);
+});
+
+test("t stops before the char; T stops after", () => {
+  const s = normal("a.b.c", 0);
+  feed(s, ["t", "."]);
+  assert.strictEqual(s.cursor, 0); // just before the first dot at 1
+  const s2 = normal("a.b.c", 4);
+  feed(s2, ["T", "."]);
+  assert.strictEqual(s2.cursor, 4); // just after the dot at 3
+});
+
+test("df deletes up to and including the target (inclusive)", () => {
+  const s = normal("foo(bar)baz", 0);
+  feed(s, ["d", "f", ")"]);
+  assert.strictEqual(s.text, "baz");
+});
+
+test("dt deletes up to but not including the target", () => {
+  const s = normal("foo(bar)baz", 0);
+  feed(s, ["d", "t", ")"]);
+  assert.strictEqual(s.text, ")baz");
+});
+
+test("ct changes up to the target and enters insert", () => {
+  const s = normal("hello, world", 0);
+  feed(s, ["c", "t", ","]);
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+  assert.strictEqual(s.text, ", world");
+});
+
+test("; repeats the last find, , reverses it", () => {
+  const s = normal("a.b.c.d", 0);
+  feed(s, ["f", "."]);
+  assert.strictEqual(s.cursor, 1);
+  feed(s, ";");
+  assert.strictEqual(s.cursor, 3);
+  feed(s, ";");
+  assert.strictEqual(s.cursor, 5);
+  feed(s, ",");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("; steps over an adjacent match after t", () => {
+  const s = normal("a.b.c.d", 0);
+  feed(s, ["t", "."]);
+  assert.strictEqual(s.cursor, 0);
+  feed(s, ";");
+  assert.strictEqual(s.cursor, 2); // before the second dot at 3
+});
+
+test("find works as a visual-mode motion", () => {
+  const s = normal("foo(bar)baz", 0);
+  feed(s, ["v", "f", ")"]);
+  assert.strictEqual(s.mode, vim.MODE.VISUAL);
+  assert.strictEqual(s.anchor, 0);
+  assert.strictEqual(s.cursor, 7);
+  feed(s, "d");
+  assert.strictEqual(s.text, "baz");
+});
+
+// ---- dot-repeat ------------------------------------------------------------
+
+// Simulate the adapter: while in Insert mode the native editor inserts `typed`
+// at the cursor; on Escape the adapter reports the typed text to the engine.
+function insertTyped(state, typed) {
+  state.text =
+    state.text.slice(0, state.cursor) + typed + state.text.slice(state.cursor);
+  state.cursor += typed.length;
+  vim.finishInsert(state, typed);
+  vim.handleKey(state, ev("<Esc>"));
+}
+
+test(". repeats x", () => {
+  const s = normal("abcd", 0);
+  feed(s, "x");
+  feed(s, ".");
+  feed(s, ".");
+  assert.strictEqual(s.text, "d");
+});
+
+test(". with a count substitutes the recorded count", () => {
+  const s = normal("abcdef", 0);
+  feed(s, "x"); // -> bcdef
+  feed(s, "3."); // 3x -> ef
+  assert.strictEqual(s.text, "ef");
+});
+
+test(". repeats dw", () => {
+  const s = normal("foo bar baz", 0);
+  feed(s, "dw");
+  feed(s, ".");
+  assert.strictEqual(s.text, "baz");
+});
+
+test(". reuses the recorded count for 2dd", () => {
+  const s = normal("a\nb\nc\nd\ne", 0);
+  feed(s, ["2", "d", "d"]); // -> c d e
+  feed(s, "."); // repeats 2dd -> e
+  assert.strictEqual(s.text, "e");
+});
+
+test(". repeats r", () => {
+  const s = normal("aaaa", 0);
+  feed(s, "rx"); // xaaa
+  feed(s, "l");
+  feed(s, "."); // replace char under cursor with x
+  assert.strictEqual(s.text, "xxaa");
+});
+
+test(". repeats p", () => {
+  const s = normal("abc", 0);
+  feed(s, "yy");
+  feed(s, "p"); // abc / abc
+  feed(s, ".");
+  assert.strictEqual(s.text, "abc\nabc\nabc");
+});
+
+test(". repeats a change-word including the typed text", () => {
+  const s = normal("foo bar", 0);
+  feed(s, "cw");
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+  insertTyped(s, "X"); // -> "X bar"
+  assert.strictEqual(s.text, "X bar");
+  feed(s, "w"); // onto "bar"
+  feed(s, ".");
+  assert.strictEqual(s.text, "X X");
+});
+
+test(". repeats o and the typed text", () => {
+  const s = normal("hello", 0);
+  feed(s, "o");
+  insertTyped(s, "world");
+  feed(s, ".");
+  assert.strictEqual(s.text, "hello\nworld\nworld");
+});
+
+test(". repeats A with the appended text", () => {
+  const s = normal("ab", 0);
+  feed(s, "A");
+  insertTyped(s, "!");
+  feed(s, ".");
+  assert.strictEqual(s.text, "ab!!");
+});
+
+test(". repeats the last change, not an intervening undo", () => {
+  const s = normal("abcd", 0);
+  feed(s, "x"); // bcd
+  feed(s, "u"); // back to abcd
+  feed(s, "."); // repeats x, not the undo
+  assert.strictEqual(s.text, "bcd");
+});
+
+test(". does nothing before any change is recorded", () => {
+  const s = normal("abc", 0);
+  feed(s, ".");
+  assert.strictEqual(s.text, "abc");
+});
+
+test(". repeats a text-object change with typed text", () => {
+  const s = normal("a(foo)b(bar)c", 0);
+  feed(s, ["f", "("]); // -> index 1
+  feed(s, ["c", "i", "("]); // delete foo, insert
+  insertTyped(s, "X"); // a(X)b(bar)c
+  assert.strictEqual(s.text, "a(X)b(bar)c");
+  feed(s, ["f", "("]); // onto the second (
+  feed(s, "."); // replay ci( + X
+  assert.strictEqual(s.text, "a(X)b(X)c");
+});
+
+// ---- search ----------------------------------------------------------------
+
+test("setSearch jumps to the next match; n steps with wrap", () => {
+  const s = normal("foo bar foo baz foo", 0);
+  vim.setSearch(s, "foo", 1);
+  assert.strictEqual(s.cursor, 8);
+  vim.searchNext(s, false);
+  assert.strictEqual(s.cursor, 16);
+  const info = vim.searchNext(s, false);
+  assert.strictEqual(s.cursor, 0);
+  assert.strictEqual(info.wrapped, true);
+});
+
+test("N searches in the opposite direction", () => {
+  const s = normal("a foo b foo c", 0);
+  vim.setSearch(s, "foo", 1);
+  assert.strictEqual(s.cursor, 2);
+  vim.searchNext(s, false);
+  assert.strictEqual(s.cursor, 8);
+  vim.searchNext(s, true);
+  assert.strictEqual(s.cursor, 2);
+});
+
+test("? searches backward", () => {
+  const s = normal("x y x y x", 8);
+  vim.setSearch(s, "x", -1);
+  assert.strictEqual(s.cursor, 4);
+});
+
+test("smartcase: lowercase query is case-insensitive", () => {
+  assert.strictEqual(vim.computeMatches("Foo foo FOO", "foo").length, 3);
+});
+
+test("smartcase: an uppercase letter makes the query case-sensitive", () => {
+  const m = vim.computeMatches("Foo foo FOO", "Foo");
+  assert.strictEqual(m.length, 1);
+  assert.strictEqual(m[0].start, 0);
+});
+
+test("empty query reuses the last search", () => {
+  const s = normal("a b a b a", 0);
+  vim.setSearch(s, "a", 1);
+  assert.strictEqual(s.cursor, 4);
+  vim.setSearch(s, "", 1);
+  assert.strictEqual(s.cursor, 8);
+});
+
+test("n does nothing when no search is set", () => {
+  const s = normal("abc", 0);
+  feed(s, "n");
+  assert.strictEqual(s.cursor, 0);
+});
+
+test("Escape clears the search highlight flag", () => {
+  const s = normal("a foo", 0);
+  vim.setSearch(s, "foo", 1);
+  assert.strictEqual(s.hlsearch, true);
+  feed(s, ["<Esc>"]);
+  assert.strictEqual(s.hlsearch, false);
+});
