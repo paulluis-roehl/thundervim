@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Thundervim",
   "version": "0.1.0",
-  "description": "Vim keybindings for editing plain-text email in the Thunderbird compose window.",
+  "description": "Vim keybindings for editing email in the Thunderbird compose window.",
   "browser_specific_settings": {
     "gecko": {
       "id": "thundervim@local",

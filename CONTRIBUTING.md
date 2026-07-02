@@ -22,6 +22,30 @@ Keeping logic in the engine (and out of the adapter) is the core design rule:
 if a change can be expressed as engine state, it belongs in `engine.js` with a
 test, not in the adapter.
 
+### Rendering: formatting-preserving diff writes
+
+The adapter never rebuilds the compose body wholesale (doing so would flatten
+HTML formatting). Instead, after every command it diffs the engine's new
+`state.text` against the DOM's current serialization and applies only the
+changed span:
+
+- `readBuffer()` serializes the live DOM to a linear string (block elements and
+  `<br>` become `\n`); `domPointAt()` maps a linear offset back to a DOM point.
+  **These two must stay in lockstep** — `domPointAt` mirrors `readBuffer`'s
+  block-boundary newline accounting, or offsets desync in a rich DOM.
+- `applyEdit()` computes the single changed span (common prefix/suffix). Its
+  **fast path** handles edits within one text node by splicing that node's
+  character data — exact and formatting-safe. Its **general path** (edits that
+  cross a text-node / `<br>` / block boundary) uses range surgery, then verifies
+  it reproduced `newText`; if not, it falls back to the flat `writeBuffer`
+  (which loses formatting but keeps the model consistent).
+- Newlines introduced by edits are stored as literal `\n` characters rendered
+  via `white-space: pre-wrap`, which both `readBuffer` and `domPointAt` count
+  identically.
+
+In Insert mode the native editor edits the DOM directly; the engine re-syncs
+from `readBuffer()` on `Esc`.
+
 ## Project layout
 
 ```

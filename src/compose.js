@@ -161,28 +161,169 @@
     sel.addRange(range);
   }
 
+  // ------------------------------------------------ formatting-preserving write
+
+  function commonPrefixLen(a, b) {
+    var m = Math.min(a.length, b.length);
+    var i = 0;
+    while (i < m && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+    return i;
+  }
+  function commonSuffixLen(a, b, prefix) {
+    var m = Math.min(a.length, b.length) - prefix;
+    var s = 0;
+    while (
+      s < m &&
+      a.charCodeAt(a.length - 1 - s) === b.charCodeAt(b.length - 1 - s)
+    )
+      s++;
+    return s;
+  }
+
+  // Collapse the native selection to a single linear offset.
+  function setNativeCaret(offset) {
+    var b = domBoundary(offset);
+    if (!b) return;
+    try {
+      var range = document.createRange();
+      range.setStart(b.node, b.offset);
+      range.collapse(true);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (err) {
+      /* boundary went stale; ignore */
+    }
+  }
+
+  // Replace linear span [start, end) with `repl` via DOM range surgery. Used
+  // when the edit crosses a text-node / <br> / block boundary. Newlines in
+  // `repl` are kept as literal "\n" characters, which white-space:pre-wrap
+  // renders as breaks and readBuffer/domPointAt both count consistently.
+  function generalReplace(start, end, repl) {
+    var bs = domBoundary(start);
+    var be = domBoundary(end);
+    if (!bs || !be) return false;
+    try {
+      var range = document.createRange();
+      range.setStart(bs.node, bs.offset);
+      range.setEnd(be.node, be.offset);
+      range.deleteContents();
+      if (repl) range.insertNode(document.createTextNode(repl));
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  // Bring the DOM in line with `newText` by applying only the changed span, so
+  // untouched markup (quote levels, bold, links, ...) is preserved. Falls back
+  // to a full flat rewrite only if a general edit can't reproduce newText.
+  function applyEdit(oldText, newText, caret, placeCaret) {
+    if (oldText === newText) {
+      if (placeCaret) setNativeCaret(caret);
+      return;
+    }
+    var p = commonPrefixLen(oldText, newText);
+    var sfx = commonSuffixLen(oldText, newText, p);
+    var qOld = oldText.length - sfx;
+    var repl = newText.slice(p, newText.length - sfx);
+
+    // Fast path: the whole changed span lives inside one text node. Splicing its
+    // character data touches nothing else, so it is exact and formatting-safe
+    // (literal newlines are fine under pre-wrap).
+    var a = domPointAt(p);
+    var b = domPointAt(qOld);
+    if (
+      a &&
+      b &&
+      !a.br &&
+      !b.br &&
+      a.node === b.node &&
+      a.node.nodeType === 3 &&
+      a.offset <= b.offset
+    ) {
+      var d = a.node.data;
+      a.node.data = d.slice(0, a.offset) + repl + d.slice(b.offset);
+      if (placeCaret) setNativeCaret(caret);
+      return;
+    }
+
+    // General path: cross-boundary edit. Verify it reproduced newText exactly;
+    // if not, fall back to the flat writer (loses formatting, but stays correct).
+    if (generalReplace(p, qOld, repl)) {
+      var check = readBuffer();
+      if (check && check.text === newText) {
+        if (placeCaret) setNativeCaret(caret);
+        return;
+      }
+    }
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("thundervim: flat-render fallback for a structural edit");
+    }
+    writeBuffer(newText, caret);
+  }
+
+  // Render the engine's buffer into the live DOM, preserving formatting.
+  // `placeCaret` positions the native caret (needed when entering Insert mode).
+  function syncDom(placeCaret) {
+    if (!document.body) return;
+    var cur = readBuffer();
+    applyEdit(cur ? cur.text : "", state.text, state.cursor, placeCaret);
+    ensureTrailingPad(state.text);
+  }
+
+  // A buffer ending in "\n" (or empty) needs a trailing padding <br> so the last
+  // empty line is reachable under pre-wrap; readBuffer/domPointAt skip it as a
+  // bogus node. Mirrors the invariant the flat writeBuffer used to maintain.
+  function ensureTrailingPad(text) {
+    var body = document.body;
+    if (!body) return;
+    var needs = text.length === 0 || text.charAt(text.length - 1) === "\n";
+    var last = body.lastChild;
+    var lastIsBr = last && last.nodeType === 1 && last.tagName === "BR";
+    if (needs && !lastIsBr) {
+      body.appendChild(document.createElement("br"));
+    } else if (!needs && lastIsBr && isBogusTrailingBr(last)) {
+      body.removeChild(last);
+    }
+  }
+
   // ---------------------------------------------------- block cursor overlay
 
   // Map a linear buffer offset to a DOM point { node, offset, br } by walking
-  // the body the same way readBuffer serializes it.
+  // the body exactly the way readBuffer serializes it -- including the synthetic
+  // newline inserted at a block-element boundary. Keeping this walk in lockstep
+  // with readBuffer is what lets offsets stay correct in a rich (non-flat) DOM.
   function domPointAt(target) {
     var body = document.body;
     if (!body) return null;
     var acc = 0;
+    var lastCh = ""; // last emitted character ("" = nothing emitted yet)
+    var lastLeaf = null; // DOM point just after the last emitted character
     var result = null;
     function visit(node) {
       if (result) return;
       if (node.nodeType === 3) {
-        var len = node.data.length;
+        var data = node.data;
+        var len = data.length;
         if (target <= acc + len) {
           result = { node: node, offset: target - acc, br: false };
           return;
         }
         acc += len;
+        if (len) {
+          lastCh = data.charAt(len - 1);
+          lastLeaf = { node: node, offset: len };
+        }
         return;
       }
       if (node.nodeType !== 1) return;
-      if (node.id === "thundervim-status" || node.id === "thundervim-cursor")
+      if (
+        node.id === "thundervim-status" ||
+        node.id === "thundervim-cursor" ||
+        node.id === "thundervim-highlights"
+      )
         return;
       if (node.tagName === "BR") {
         if (isBogusTrailingBr(node)) return; // padding node, not a newline
@@ -191,13 +332,45 @@
           return;
         }
         acc += 1;
+        lastCh = "\n";
+        var p = node.parentNode;
+        lastLeaf = {
+          node: p,
+          offset: Array.prototype.indexOf.call(p.childNodes, node) + 1,
+        };
         return;
+      }
+      // Entering a block element emits a newline (unless one is already there),
+      // mirroring readBuffer. Its DOM point is the end of the previous line.
+      if (BLOCK[node.tagName] && acc > 0 && lastCh !== "\n") {
+        if (target === acc) {
+          result = lastLeaf || { node: node, offset: 0, br: false };
+          return;
+        }
+        acc += 1;
+        lastCh = "\n";
       }
       var children = node.childNodes;
       for (var i = 0; i < children.length && !result; i++) visit(children[i]);
     }
     visit(body);
     return result;
+  }
+
+  // A DOM boundary { node, offset } suitable for Range.setStart/setEnd. Unlike a
+  // domPointAt result, a `br` newline is expressed as its index in the parent so
+  // a range can span (and thus delete) the break itself.
+  function domBoundary(offset) {
+    var p = domPointAt(offset);
+    if (!p) return null;
+    if (p.br) {
+      var parent = p.node.parentNode;
+      return {
+        node: parent,
+        offset: Array.prototype.indexOf.call(parent.childNodes, p.node),
+      };
+    }
+    return { node: p.node, offset: p.offset };
   }
 
   // Rect of the character the Normal-mode cursor sits on (viewport coords).
@@ -584,7 +757,7 @@
       engine.syncFromEditor(state, text, caret);
       state.mode = engine.MODE.NORMAL;
       state.cursor = engine.clampNormal(text, caret - 1);
-      writeBuffer(state.text, state.cursor);
+      syncDom(false);
       updateBar();
       lastInsert = { key: null, time: 0 };
       return true;
@@ -629,7 +802,7 @@
       searching = null;
       var info = engine.setSearch(state, q, dir);
       searchMsg = searchMessage(info);
-      writeBuffer(state.text, state.cursor);
+      syncDom(false);
       updateBar();
       return;
     }
@@ -662,7 +835,7 @@
         var b = readBuffer();
         engine.syncFromEditor(state, b ? b.text : "", b ? b.caret : 0);
         state.mode = engine.MODE.NORMAL;
-        writeBuffer(state.text, state.cursor);
+        syncDom(false);
       }
       updateBar();
       return;
@@ -700,7 +873,7 @@
         var r = engine.handleKey(state, ev); // -> Normal, cursor left once
         if (r.handled) {
           swallow(e);
-          writeBuffer(state.text, state.cursor);
+          syncDom(false);
           updateBar();
         }
         return;
@@ -740,7 +913,7 @@
     if (state.mode === engine.MODE.INSERT) {
       insertStart = { text: state.text, cursor: state.cursor };
     }
-    writeBuffer(state.text, state.cursor);
+    syncDom(state.mode === engine.MODE.INSERT);
     updateBar();
   }
 

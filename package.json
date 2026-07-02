@@ -2,7 +2,7 @@
   "name": "thundervim",
   "version": "0.1.0",
   "private": true,
-  "description": "Vim keybindings for editing plain-text email in the Thunderbird compose window.",
+  "description": "Vim keybindings for editing email in the Thunderbird compose window.",
   "scripts": {
     "test": "node --test",
     "check": "node --check src/engine.js && node --check src/compose.js",

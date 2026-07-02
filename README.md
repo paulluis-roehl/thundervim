@@ -1,16 +1,19 @@
 # Thundervim
 
-Vim keybindings for editing **plain-text** email in Thunderbird's compose window.
+Vim keybindings for editing email in Thunderbird's compose window.
 
 Write email the way you edit code: Normal / Insert / Visual modes, motions,
 operators, text objects, search, and paragraph reflow — all inside the
-Thunderbird composer, with a mode line and block cursor to match.
+Thunderbird composer, with a mode line and block cursor to match. Works in both
+plain-text and rich-text (HTML) compose windows; in HTML, existing formatting
+(quoted replies, signatures, bold, links) is preserved while you edit the text.
 
 ## Requirements
 
 - **Thunderbird 151 or newer** (developed and tested against 152).
-- A **plain-text** compose window. The rich-text (HTML) composer is not
-  supported — see [Composing in plain text](#composing-in-plain-text).
+- Works in both plain-text and HTML compose windows. Plain text is the most
+  battle-tested; HTML support preserves formatting but is newer — see
+  [Rich text (HTML)](#rich-text-html).
 
 ## Install
 
@@ -36,17 +39,22 @@ You can load the add-on without signing; it stays until you restart Thunderbird.
 Permanent installation of an unsigned build is only possible on
 Developer/unbranded Thunderbird with signature enforcement disabled.
 
-## Composing in plain text
+## Rich text (HTML)
 
-Thundervim targets the plain-text composer. To open one:
+Thundervim works in both compose modes:
 
-- Hold **Shift** while clicking **Write** / **Reply**, or
-- Make it the default: **Settings → Composition** (or per-account
-  *Account Settings → Composition & Addressing* → uncheck *Compose messages in
-  HTML format*).
+- **Plain text** is the most thoroughly tested. To compose in plain text, hold
+  **Shift** while clicking **Write** / **Reply**, or make it the default under
+  **Settings → Composition** (or per-account *Account Settings → Composition &
+  Addressing* → uncheck *Compose messages in HTML format*).
+- **HTML** is supported by editing the text in place while leaving existing
+  markup untouched: quote levels, signatures, bold, links, and other formatting
+  are preserved as you navigate and edit. Vim itself doesn't *author* new rich
+  formatting (that isn't a vim concept), but Thunderbird's own shortcuts
+  (`Ctrl-B`, etc.) still work in Insert mode.
 
-In an HTML compose window the add-on still loads, but Normal-mode edits rewrite
-the body as plain text and strip formatting, so stick to plain-text mode.
+HTML support is newer than the plain-text path; if a structural edit ever
+misbehaves on a complex message, please file an issue.
 
 ## Commands
 
@@ -120,7 +128,8 @@ classic escape shortcut as a fallback.
 - Search is a literal (non-regex) substring match and is not operator-pending
   (`d/pat` is unsupported); an empty query repeats the last search.
 - `.` does not repeat Visual-mode operations or `n` / search.
-- HTML compose is unsupported.
+- In HTML, vim edits existing text and preserves formatting but does not author
+  new rich formatting (bold/italic/lists) on its own.
 
 ## Contributing
 
