@@ -565,6 +565,55 @@ test(". repeats a text-object change with typed text", () => {
   assert.strictEqual(s.text, "a(X)b(X)c");
 });
 
+// ---- J (join lines) --------------------------------------------------------
+
+test("J joins the next line with a space", () => {
+  const s = normal("foo\nbar", 0);
+  feed(s, "J");
+  assert.strictEqual(s.text, "foo bar");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("J strips leading whitespace of the joined line", () => {
+  const s = normal("foo\n   bar", 0);
+  feed(s, "J");
+  assert.strictEqual(s.text, "foo bar");
+});
+
+test("J does not double a space when the line already ends in one", () => {
+  const s = normal("foo \nbar", 0);
+  feed(s, "J");
+  assert.strictEqual(s.text, "foo bar");
+});
+
+test("3J joins three lines", () => {
+  const s = normal("a\nb\nc", 0);
+  feed(s, ["3", "J"]);
+  assert.strictEqual(s.text, "a b c");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("J on the last line is a no-op", () => {
+  const s = normal("only", 0);
+  feed(s, "J");
+  assert.strictEqual(s.text, "only");
+});
+
+test(". repeats J", () => {
+  const s = normal("x\ny\nz", 0);
+  feed(s, "J"); // "x y\nz"
+  assert.strictEqual(s.text, "x y\nz");
+  feed(s, "."); // join again -> "x y z"
+  assert.strictEqual(s.text, "x y z");
+});
+
+test("visual J joins all selected lines", () => {
+  const s = normal("a\nb\nc\nd", 0);
+  feed(s, ["V", "j", "j", "J"]); // select 3 lines, join
+  assert.strictEqual(s.text, "a b c\nd");
+  assert.strictEqual(s.mode, vim.MODE.NORMAL);
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {

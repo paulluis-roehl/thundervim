@@ -1045,6 +1045,27 @@
         resetPending(state);
         return { state: state, handled: true };
       }
+      case "J": {
+        if (visual) {
+          var jl = buildLines(state.text);
+          var ja = lineOf(jl, state.anchor);
+          var jb = lineOf(jl, state.cursor);
+          var jlo = Math.min(ja, jb),
+            jhi = Math.max(ja, jb);
+          pushUndo(state);
+          state.cursor = jl[jlo].start;
+          joinLines(state, Math.max(1, jhi - jlo));
+          state.mode = MODE.NORMAL;
+          state.anchor = null;
+          resetPending(state);
+          return { state: state, handled: true };
+        }
+        var jn = effectiveCount(state);
+        pushUndo(state);
+        joinLines(state, jn <= 2 ? 1 : jn - 1);
+        resetPending(state);
+        return { state: state, handled: true };
+      }
       case "d":
         if (visual) return visualOperator(state, "d");
         state.pending.op = "d";
@@ -1137,6 +1158,31 @@
       replaceRange(state, ls, ls, "\n");
       state.cursor = ls;
     }
+  }
+
+  // Join `joins` following lines onto the current one. Leading whitespace of each
+  // joined line is removed and a single space inserted, unless the current line
+  // already ends in whitespace or the joined text starts with ")".
+  function joinLines(state, joins) {
+    var lastPos = state.cursor;
+    for (var k = 0; k < joins; k++) {
+      var le = lineEndAt(state.text, state.cursor);
+      if (le >= state.text.length) break; // no line below to join
+      var ns = le + 1;
+      while (
+        ns < state.text.length &&
+        (state.text[ns] === " " || state.text[ns] === "\t")
+      )
+        ns++;
+      var curEndsWs =
+        le > 0 && (state.text[le - 1] === " " || state.text[le - 1] === "\t");
+      var nextEmpty = ns >= state.text.length || state.text[ns] === "\n";
+      var sep = !nextEmpty && !curEndsWs && state.text[ns] !== ")" ? " " : "";
+      state.text = state.text.slice(0, le) + sep + state.text.slice(ns);
+      lastPos = sep ? le : Math.max(0, le - 1);
+      state.cursor = le;
+    }
+    state.cursor = clampNormal(state.text, lastPos);
   }
 
   function visualOperator(state, op) {
