@@ -614,6 +614,79 @@ test("visual J joins all selected lines", () => {
   assert.strictEqual(s.mode, vim.MODE.NORMAL);
 });
 
+// ---- case change -----------------------------------------------------------
+
+test("~ toggles the char under the cursor and advances", () => {
+  const s = normal("hello", 0);
+  feed(s, "~");
+  assert.strictEqual(s.text, "Hello");
+  assert.strictEqual(s.cursor, 1);
+});
+
+test("3~ toggles three chars", () => {
+  const s = normal("hello", 0);
+  feed(s, ["3", "~"]);
+  assert.strictEqual(s.text, "HELlo");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("gUiw uppercases the inner word", () => {
+  const s = normal("foo bar", 0);
+  feed(s, ["g", "U", "i", "w"]);
+  assert.strictEqual(s.text, "FOO bar");
+});
+
+test("guiw lowercases the inner word", () => {
+  const s = normal("FOO BAR", 0);
+  feed(s, ["g", "u", "i", "w"]);
+  assert.strictEqual(s.text, "foo BAR");
+});
+
+test("g~iw toggles the inner word", () => {
+  const s = normal("Foo", 0);
+  feed(s, ["g", "~", "i", "w"]);
+  assert.strictEqual(s.text, "fOO");
+});
+
+test("gU$ uppercases to end of line", () => {
+  const s = normal("abc def", 4);
+  feed(s, ["g", "U", "$"]);
+  assert.strictEqual(s.text, "abc DEF");
+});
+
+test("gUU uppercases the whole line", () => {
+  const s = normal("foo\nbar", 0);
+  feed(s, ["g", "U", "U"]);
+  assert.strictEqual(s.text, "FOO\nbar");
+});
+
+test(". repeats gUiw on the next word", () => {
+  const s = normal("foo bar baz", 0);
+  feed(s, ["g", "U", "i", "w"]); // FOO bar baz
+  feed(s, "w");
+  feed(s, "."); // FOO BAR baz
+  assert.strictEqual(s.text, "FOO BAR baz");
+});
+
+test("visual U uppercases the selection", () => {
+  const s = normal("foo bar", 0);
+  feed(s, ["v", "l", "l", "U"]);
+  assert.strictEqual(s.text, "FOO bar");
+  assert.strictEqual(s.mode, vim.MODE.NORMAL);
+});
+
+test("visual u lowercases the selection", () => {
+  const s = normal("FOO BAR", 0);
+  feed(s, ["v", "l", "l", "u"]);
+  assert.strictEqual(s.text, "foo BAR");
+});
+
+test("visual g~ toggles the selection", () => {
+  const s = normal("Foo", 0);
+  feed(s, ["v", "l", "l", "g", "~"]);
+  assert.strictEqual(s.text, "fOO");
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {

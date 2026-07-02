@@ -448,14 +448,51 @@
     );
   }
 
-  // Apply an operator ('d','c','y') over a resolved motion.
+  // ---- case change ----------------------------------------------------------
+
+  function caseKindOf(op) {
+    return op === "gu"
+      ? "lower"
+      : op === "gU"
+        ? "upper"
+        : op === "g~"
+          ? "toggle"
+          : null;
+  }
+  function caseTransform(str, kind) {
+    if (kind === "lower") return str.toLowerCase();
+    if (kind === "upper") return str.toUpperCase();
+    var out = "";
+    for (var i = 0; i < str.length; i++) {
+      var c = str[i],
+        lo = c.toLowerCase(),
+        up = c.toUpperCase();
+      out += c === lo && c !== up ? up : c === up && c !== lo ? lo : c;
+    }
+    return out;
+  }
+
+  // Apply an operator ('d','c','y','gu','gU','g~') over a resolved motion.
   function applyOperator(state, op, motion) {
+    var caseKind = caseKindOf(op);
     if (motion.kind === "line") {
       var lines = buildLines(state.text);
       var a = lineOf(lines, state.cursor);
       var b = lineOf(lines, motion.pos);
       var lo = Math.min(a, b);
       var hi = Math.max(a, b);
+      if (caseKind) {
+        var cs = lines[lo].start,
+          ce = lines[hi].end;
+        replaceRange(
+          state,
+          cs,
+          ce,
+          caseTransform(state.text.slice(cs, ce), caseKind),
+        );
+        state.cursor = clampNormal(state.text, cs);
+        return;
+      }
       if (op === "y") {
         var chunk = state.text.slice(lines[lo].start, lines[hi].end) + "\n";
         state.register = { text: chunk, linewise: true };
@@ -479,6 +516,17 @@
     if (motion.kind === "incl-eol") end = motion.pos;
     if (start === end) return;
 
+    if (caseKind) {
+      replaceRange(
+        state,
+        start,
+        end,
+        caseTransform(state.text.slice(start, end), caseKind),
+      );
+      state.cursor = clampNormal(state.text, start);
+      return;
+    }
+
     var removedText = state.text.slice(start, end);
     state.register = { text: removedText, linewise: false };
     if (op === "y") {
@@ -500,6 +548,17 @@
       var t = start;
       start = end;
       end = t;
+    }
+    var caseKind = caseKindOf(op);
+    if (caseKind) {
+      replaceRange(
+        state,
+        start,
+        end,
+        caseTransform(state.text.slice(start, end), caseKind),
+      );
+      state.cursor = clampNormal(state.text, start);
+      return;
     }
     state.register = { text: state.text.slice(start, end), linewise: false };
     if (op === "y") {
@@ -855,10 +914,18 @@
       return { state: state, handled: true };
     }
 
-    // `g` prefix (for gg).
+    // `g` prefix (gg, gu, gU, g~).
     if (state.pending.g) {
       state.pending.g = false;
       if (key === "g") return runMotionOrOperator(state, "gg");
+      if (key === "u" || key === "U" || key === "~") {
+        var gop = key === "u" ? "gu" : key === "U" ? "gU" : "g~";
+        if (state.mode === MODE.VISUAL || state.mode === MODE.VLINE) {
+          return applyCaseVisual(state, caseKindOf(gop));
+        }
+        state.pending.op = gop;
+        return { state: state, handled: true };
+      }
       resetPending(state);
       return { state: state, handled: true };
     }
@@ -880,6 +947,21 @@
       }
       if (key === ";") return repeatFind(state, false);
       if (key === ",") return repeatFind(state, true);
+      // Doubled case operator (guu / gUU / g~~): linewise on the current line(s).
+      if (
+        (op === "gu" && key === "u") ||
+        (op === "gU" && key === "U") ||
+        (op === "g~" && key === "~")
+      ) {
+        var gc = effectiveCount(state);
+        var glines = buildLines(state.text);
+        var gli = lineOf(glines, state.cursor);
+        var gtarget = Math.min(glines.length - 1, gli + gc - 1);
+        pushUndo(state);
+        applyOperator(state, op, { pos: glines[gtarget].start, kind: "line" });
+        resetPending(state);
+        return { state: state, handled: true };
+      }
       if (key === op) {
         var cnt = effectiveCount(state);
         pushUndo(state);
@@ -1117,10 +1199,33 @@
         resetPending(state);
         return { state: state, handled: true };
       case "u":
+        if (visual) return applyCaseVisual(state, "lower");
         state._noRecord = true;
         undo(state);
         resetPending(state);
         return { state: state, handled: true };
+      case "U":
+        if (visual) return applyCaseVisual(state, "upper");
+        resetPending(state);
+        return { state: state, handled: true };
+      case "~": {
+        if (visual) return applyCaseVisual(state, "toggle");
+        var tn = effectiveCount(state);
+        var tle = lineEndAt(state.text, state.cursor);
+        var tend = Math.min(state.cursor + tn, tle);
+        if (tend > state.cursor) {
+          pushUndo(state);
+          replaceRange(
+            state,
+            state.cursor,
+            tend,
+            caseTransform(state.text.slice(state.cursor, tend), "toggle"),
+          );
+          state.cursor = clampNormal(state.text, tend);
+        }
+        resetPending(state);
+        return { state: state, handled: true };
+      }
       case "v":
         if (state.mode === MODE.VISUAL) {
           state.mode = MODE.NORMAL;
@@ -1228,6 +1333,34 @@
       state.mode = MODE.NORMAL;
       state.cursor = clampNormal(state.text, start);
     }
+    resetPending(state);
+    return { state: state, handled: true };
+  }
+
+  // Apply a case change ('lower','upper','toggle') to the visual selection and
+  // return to Normal mode.
+  function applyCaseVisual(state, kind) {
+    var start, end;
+    if (state.mode === MODE.VLINE) {
+      var lines = buildLines(state.text);
+      var a = lineOf(lines, state.anchor);
+      var b = lineOf(lines, state.cursor);
+      start = lines[Math.min(a, b)].start;
+      end = lines[Math.max(a, b)].end;
+    } else {
+      start = Math.min(state.anchor, state.cursor);
+      end = Math.max(state.anchor, state.cursor) + 1;
+    }
+    pushUndo(state);
+    replaceRange(
+      state,
+      start,
+      end,
+      caseTransform(state.text.slice(start, end), kind),
+    );
+    state.anchor = null;
+    state.mode = MODE.NORMAL;
+    state.cursor = clampNormal(state.text, start);
     resetPending(state);
     return { state: state, handled: true };
   }

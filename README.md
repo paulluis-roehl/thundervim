@@ -26,6 +26,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
 | Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
 | Replace | `r{char}` |
+| Case | `~` (toggle, with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
 | Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
 | Search | `/pat` `?pat` (literal, smartcase), `n` / `N` to step with wrap; matches highlight live while typing and persist until `Esc` |
 | Undo / redo | `u`, `Ctrl-r` |
