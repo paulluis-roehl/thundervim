@@ -80,6 +80,10 @@
     return i < le ? i : ls;
   }
 
+  function isWordChar(ch) {
+    return ch !== undefined && /[A-Za-z0-9_]/.test(ch);
+  }
+
   // Character classes for word motions. 0 = whitespace, 1 = word, 2 = punct.
   function classAt(text, i, big) {
     var ch = text[i];
@@ -113,6 +117,14 @@
     var c = classAt(text, i, big);
     while (i - 1 >= 0 && classAt(text, i - 1, big) === c) i--;
     return i;
+  }
+  // Backward to the end of the previous word (the reverse of `e`).
+  function wordEndBack(text, pos, big) {
+    for (var i = pos - 1; i >= 0; i--) {
+      var c = classAt(text, i, big);
+      if (c !== 0 && classAt(text, i + 1, big) !== c) return i;
+    }
+    return 0;
   }
   function paragraphForward(text, pos) {
     var lines = buildLines(text);
@@ -330,6 +342,13 @@
       case "E": {
         p = pos;
         for (i = 0; i < count; i++) p = wordEnd(text, p, key === "E" || big);
+        return { pos: p, kind: "incl" };
+      }
+      case "ge":
+      case "gE": {
+        p = pos;
+        for (i = 0; i < count; i++)
+          p = wordEndBack(text, p, key === "gE" || big);
         return { pos: p, kind: "incl" };
       }
       case "{":
@@ -1118,6 +1137,8 @@
     if (state.pending.g) {
       state.pending.g = false;
       if (key === "g") return runMotionOrOperator(state, "gg");
+      if (key === "e" || key === "E")
+        return runMotionOrOperator(state, key === "e" ? "ge" : "gE");
       if (key === "u" || key === "U" || key === "~") {
         var gop = key === "u" ? "gu" : key === "U" ? "gU" : "g~";
         if (state.mode === MODE.VISUAL || state.mode === MODE.VLINE) {
@@ -1332,6 +1353,53 @@
         resetPending(state);
         return { state: state, handled: true };
       }
+      case "s": {
+        if (visual) return visualOperator(state, "c");
+        var sn = effectiveCount(state);
+        var sle = lineEndAt(state.text, state.cursor);
+        var send = Math.min(state.cursor + sn, sle);
+        pushUndo(state);
+        if (send > state.cursor) {
+          state.register = {
+            text: state.text.slice(state.cursor, send),
+            linewise: false,
+          };
+          replaceRange(state, state.cursor, send, "");
+        }
+        state.mode = MODE.INSERT;
+        resetPending(state);
+        return { state: state, handled: true };
+      }
+      case "S": {
+        if (visual) {
+          state.mode = MODE.VLINE;
+          return visualOperator(state, "c");
+        }
+        pushUndo(state);
+        changeLines(state, effectiveCount(state));
+        resetPending(state);
+        return { state: state, handled: true };
+      }
+      case "X": {
+        if (visual) {
+          state.mode = MODE.VLINE;
+          return visualOperator(state, "d");
+        }
+        var xn = effectiveCount(state);
+        var xls = lineStartAt(state.text, state.cursor);
+        var xstart = Math.max(state.cursor - xn, xls);
+        if (state.cursor > xstart) {
+          pushUndo(state);
+          state.register = {
+            text: state.text.slice(xstart, state.cursor),
+            linewise: false,
+          };
+          replaceRange(state, xstart, state.cursor, "");
+          state.cursor = clampNormal(state.text, xstart);
+        }
+        resetPending(state);
+        return { state: state, handled: true };
+      }
       case "D": {
         pushUndo(state);
         var le2 = lineEndAt(state.text, state.cursor);
@@ -1425,6 +1493,14 @@
         return { state: state, handled: true };
       case "N":
         searchNext(state, true);
+        resetPending(state);
+        return { state: state, handled: true };
+      case "*":
+        if (!visual) searchWord(state, 1);
+        resetPending(state);
+        return { state: state, handled: true };
+      case "#":
+        if (!visual) searchWord(state, -1);
         resetPending(state);
         return { state: state, handled: true };
       case "u":
@@ -1637,8 +1713,10 @@
   // ---- search ---------------------------------------------------------------
 
   // Literal, smartcase substring matches. Case-insensitive unless the query
-  // contains an uppercase letter. Returns non-overlapping { start, end } ranges.
-  function computeMatches(text, query) {
+  // contains an uppercase letter. When `wholeWord` is set, matches must be
+  // bounded by non-word characters (used by `*` / `#`). Returns non-overlapping
+  // { start, end } ranges.
+  function computeMatches(text, query, wholeWord) {
     if (!query) return [];
     var n = query.length;
     if (n === 0) return [];
@@ -1649,7 +1727,12 @@
       i = 0,
       idx;
     while ((idx = hay.indexOf(needle, i)) >= 0) {
-      out.push({ start: idx, end: idx + n });
+      if (
+        !wholeWord ||
+        (!isWordChar(text[idx - 1]) && !isWordChar(text[idx + n]))
+      ) {
+        out.push({ start: idx, end: idx + n });
+      }
       i = idx + n;
     }
     return out;
@@ -1658,7 +1741,11 @@
   // Move the cursor to the next match in `dir` (+1 forward, -1 backward),
   // wrapping around the buffer ends.
   function searchJump(state, dir) {
-    var m = computeMatches(state.text, state.search.query);
+    var m = computeMatches(
+      state.text,
+      state.search.query,
+      state.search.wholeWord,
+    );
     if (!m.length) return { found: false, wrapped: false, total: 0 };
     var cur = state.cursor,
       target = -1,
@@ -1692,9 +1779,42 @@
   // Commit a `/` or `?` search. An empty query reuses the previous one.
   function setSearch(state, query, dir) {
     if (query) state.search.query = query;
+    state.search.wholeWord = false;
     state.search.dir = dir || 1;
     state.hlsearch = true;
     state.lastSearchInfo = searchJump(state, state.search.dir);
+    return state.lastSearchInfo;
+  }
+
+  // The word under (or, failing that, forward from) the cursor: its text and
+  // start index. Returns null when the rest of the line has no word character.
+  function wordUnderCursor(state) {
+    var text = state.text;
+    var pos = state.cursor;
+    var le = lineEndAt(text, pos);
+    if (!isWordChar(text[pos])) {
+      var j = pos;
+      while (j < le && !isWordChar(text[j])) j++;
+      if (j >= le) return null;
+      pos = j;
+    }
+    var s = pos;
+    while (s > 0 && isWordChar(text[s - 1])) s--;
+    var e = pos;
+    while (e < text.length && isWordChar(text[e])) e++;
+    return { text: text.slice(s, e), start: s };
+  }
+
+  // `*` / `#`: search for the whole word under the cursor.
+  function searchWord(state, dir) {
+    var w = wordUnderCursor(state);
+    if (!w) return { found: false, wrapped: false, total: 0 };
+    state.search.query = w.text;
+    state.search.wholeWord = true;
+    state.search.dir = dir;
+    state.hlsearch = true;
+    state.cursor = w.start; // so the match under the cursor is skipped
+    state.lastSearchInfo = searchJump(state, dir);
     return state.lastSearchInfo;
   }
 
@@ -1722,7 +1842,7 @@
       lastFind: null,
       shiftwidth: SHIFTWIDTH,
       textwidth: TEXTWIDTH,
-      search: { query: "", dir: 1 },
+      search: { query: "", dir: 1, wholeWord: false },
       hlsearch: false,
       lastSearchInfo: null,
       pending: {

@@ -17,12 +17,12 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 
 | Group | Keys |
 | --- | --- |
-| Motions | `h j k l`, `w W b B e E`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
+| Motions | `h j k l`, `w W b B e E`, `ge` / `gE`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
 | Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (compose: `df,`, `ct)`) |
 | Match bracket | `%` (jumps between `()`/`[]`/`{}`; works as an inclusive motion, e.g. `d%`, `c%`) |
 | Enter insert | `i a I A o O` |
-| Delete | `x`, `dd`, `d{motion}`, `D` |
-| Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
+| Delete | `x`, `X`, `dd`, `d{motion}`, `D` |
+| Change | `s`, `S`, `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
 | Join | `J`, `[count]J`, and `J` over a Visual selection |
 | Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` (spaces, `shiftWidth` in `compose.js`) |
 | Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at `textWidth`, preserves quote leaders like `> `) |
@@ -31,7 +31,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Replace | `r{char}` |
 | Case | `~` (toggle, with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
 | Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
-| Search | `/pat` `?pat` (literal, smartcase), `n` / `N` to step with wrap; matches highlight live while typing and persist until `Esc` |
+| Search | `/pat` `?pat` (literal, smartcase), `*` / `#` (whole word under cursor), `n` / `N` to step with wrap; matches highlight live while typing and persist until `Esc` |
 | Undo / redo | `u`, `Ctrl-r` |
 | Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
 | Leave insert | `Esc`, or the `jk` sequence |

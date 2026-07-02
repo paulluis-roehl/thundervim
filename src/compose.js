@@ -346,7 +346,10 @@
         ? state.search.query
         : "";
     if (sq) {
-      var matches = engine.computeMatches(state.text, sq);
+      // A live query being typed is always a plain substring; a committed
+      // search may be whole-word (from `*` / `#`).
+      var whole = searching ? false : state.search.wholeWord;
+      var matches = engine.computeMatches(state.text, sq, whole);
       for (var mi = 0; mi < matches.length; mi++) {
         ranges.push({
           start: matches[mi].start,

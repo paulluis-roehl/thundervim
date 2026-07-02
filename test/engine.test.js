@@ -852,6 +852,115 @@ test(". repeats gqip", () => {
   assert.strictEqual(s.text, "aaaa bbbb\ncccc dddd\n\neeee ffff\ngggg hhhh");
 });
 
+// ---- s / S / X -------------------------------------------------------------
+
+test("s deletes the char under the cursor and enters Insert", () => {
+  const s = normal("abc", 1);
+  feed(s, "s");
+  assert.strictEqual(s.text, "ac");
+  assert.strictEqual(s.cursor, 1);
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+});
+
+test("3s deletes three chars, bounded to the line", () => {
+  const s = normal("abcdef\nghi", 4);
+  feed(s, ["3", "s"]);
+  assert.strictEqual(s.text, "abcd\nghi");
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+});
+
+test("S changes the whole line, keeping the blank line", () => {
+  const s = normal("abc\ndef", 1);
+  feed(s, "S");
+  assert.strictEqual(s.text, "\ndef");
+  assert.strictEqual(s.cursor, 0);
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+});
+
+test("2S changes two lines", () => {
+  const s = normal("one\ntwo\nthree", 0);
+  feed(s, ["2", "S"]);
+  assert.strictEqual(s.text, "\nthree");
+  assert.strictEqual(s.mode, vim.MODE.INSERT);
+});
+
+test("X deletes the char before the cursor", () => {
+  const s = normal("abc", 2);
+  feed(s, "X");
+  assert.strictEqual(s.text, "ac");
+  assert.strictEqual(s.cursor, 1);
+});
+
+test("X stops at the start of the line", () => {
+  const s = normal("ab\ncd", 4); // 'd', column 1
+  feed(s, ["5", "X"]);
+  assert.strictEqual(s.text, "ab\nd");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("X is a no-op at column 0", () => {
+  const s = normal("abc", 0);
+  feed(s, "X");
+  assert.strictEqual(s.text, "abc");
+  assert.strictEqual(s.cursor, 0);
+});
+
+// ---- ge / gE ---------------------------------------------------------------
+
+test("ge moves to the end of the previous word", () => {
+  const s = normal("foo bar baz", 8); // on 'b' of baz
+  feed(s, ["g", "e"]);
+  assert.strictEqual(s.cursor, 6); // 'r' of bar
+  feed(s, ["g", "e"]);
+  assert.strictEqual(s.cursor, 2); // 'o' of foo
+});
+
+test("ge from mid-word lands on the previous word end", () => {
+  const s = normal("foo bar", 5); // 'a' of bar
+  feed(s, ["g", "e"]);
+  assert.strictEqual(s.cursor, 2); // 'o' of foo
+});
+
+test("dge deletes back through the previous word end inclusively", () => {
+  const s = normal("foo bar baz", 8);
+  feed(s, ["d", "g", "e"]);
+  assert.strictEqual(s.text, "foo baaz");
+});
+
+test("gE treats punctuation as part of the word", () => {
+  const s = normal("foo.bar baz", 8); // 'b' of baz
+  feed(s, ["g", "E"]);
+  assert.strictEqual(s.cursor, 6); // 'r', end of 'foo.bar'
+});
+
+// ---- * / # -----------------------------------------------------------------
+
+test("* jumps to the next occurrence of the word under the cursor", () => {
+  const s = normal("foo bar foo baz foo", 0);
+  feed(s, "*");
+  assert.strictEqual(s.cursor, 8);
+  feed(s, "n");
+  assert.strictEqual(s.cursor, 16);
+});
+
+test("# searches backward for the word under the cursor", () => {
+  const s = normal("foo bar foo baz foo", 16); // last foo
+  feed(s, "#");
+  assert.strictEqual(s.cursor, 8);
+});
+
+test("* matches whole words only", () => {
+  const s = normal("foo foobar foo", 0);
+  feed(s, "*");
+  assert.strictEqual(s.cursor, 11); // skips 'foobar'
+});
+
+test("* from a non-word char uses the next word on the line", () => {
+  const s = normal("(( foo )) foo", 0);
+  feed(s, "*");
+  assert.strictEqual(s.cursor, 10); // second 'foo'
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {
