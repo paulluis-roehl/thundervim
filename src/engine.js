@@ -28,6 +28,7 @@
     VLINE: "visual-line",
   };
   var MAX_UNDO = 500;
+  var SHIFTWIDTH = 4; // spaces inserted/removed by >> and <<
 
   // ---- buffer helpers -------------------------------------------------------
 
@@ -472,8 +473,57 @@
     return out;
   }
 
-  // Apply an operator ('d','c','y','gu','gU','g~') over a resolved motion.
+  // ---- indent / dedent ------------------------------------------------------
+
+  // Shift lines [lo, hi] by `multiplier` shiftwidths. dir +1 indents (prepend
+  // spaces), -1 dedents (strip leading whitespace). Empty lines are untouched.
+  function shiftLines(state, dir, lo, hi, multiplier) {
+    var amount =
+      (state.shiftwidth || SHIFTWIDTH) * Math.max(1, multiplier || 1);
+    var pad = repeatChar(" ", amount);
+    var lines = buildLines(state.text);
+    var parts = [];
+    for (var i = 0; i < lines.length; i++) {
+      var content = state.text.slice(lines[i].start, lines[i].end);
+      if (i >= lo && i <= hi && content.length > 0) {
+        if (dir > 0) {
+          content = pad + content;
+        } else {
+          var j = 0;
+          while (
+            j < content.length &&
+            j < amount &&
+            (content[j] === " " || content[j] === "\t")
+          )
+            j++;
+          content = content.slice(j);
+        }
+      }
+      parts.push(content);
+    }
+    state.text = parts.join("\n");
+    var nl = buildLines(state.text);
+    state.cursor = clampNormal(
+      state.text,
+      firstNonBlank(state.text, nl[lo].start),
+    );
+  }
+
+  // Apply an operator ('d','c','y','gu','gU','g~','>','<') over a resolved motion.
   function applyOperator(state, op, motion) {
+    if (op === ">" || op === "<") {
+      var sl = buildLines(state.text);
+      var sa = lineOf(sl, state.cursor);
+      var sb = lineOf(sl, motion.pos);
+      shiftLines(
+        state,
+        op === ">" ? 1 : -1,
+        Math.min(sa, sb),
+        Math.max(sa, sb),
+        1,
+      );
+      return;
+    }
     var caseKind = caseKindOf(op);
     if (motion.kind === "line") {
       var lines = buildLines(state.text);
@@ -548,6 +598,19 @@
       var t = start;
       start = end;
       end = t;
+    }
+    if (op === ">" || op === "<") {
+      var rl = buildLines(state.text);
+      var ra = lineOf(rl, start);
+      var rb = lineOf(rl, Math.max(start, end - 1));
+      shiftLines(
+        state,
+        op === ">" ? 1 : -1,
+        Math.min(ra, rb),
+        Math.max(ra, rb),
+        1,
+      );
+      return;
     }
     var caseKind = caseKindOf(op);
     if (caseKind) {
@@ -962,6 +1025,17 @@
         resetPending(state);
         return { state: state, handled: true };
       }
+      // Doubled shift (>> / <<): count lines by one shiftwidth.
+      if ((op === ">" && key === ">") || (op === "<" && key === "<")) {
+        var sc = effectiveCount(state);
+        var slines = buildLines(state.text);
+        var sli = lineOf(slines, state.cursor);
+        var shi = Math.min(slines.length - 1, sli + sc - 1);
+        pushUndo(state);
+        shiftLines(state, op === ">" ? 1 : -1, sli, shi, 1);
+        resetPending(state);
+        return { state: state, handled: true };
+      }
       if (key === op) {
         var cnt = effectiveCount(state);
         pushUndo(state);
@@ -1226,6 +1300,14 @@
         resetPending(state);
         return { state: state, handled: true };
       }
+      case ">":
+        if (visual) return shiftVisual(state, 1);
+        state.pending.op = ">";
+        return { state: state, handled: true };
+      case "<":
+        if (visual) return shiftVisual(state, -1);
+        state.pending.op = "<";
+        return { state: state, handled: true };
       case "v":
         if (state.mode === MODE.VISUAL) {
           state.mode = MODE.NORMAL;
@@ -1365,6 +1447,21 @@
     return { state: state, handled: true };
   }
 
+  // Visual `>` / `<`: shift the selected lines; a count is a shiftwidth
+  // multiplier (vim's Visual-mode behavior).
+  function shiftVisual(state, dir) {
+    var mult = effectiveCount(state);
+    var lines = buildLines(state.text);
+    var a = lineOf(lines, state.anchor);
+    var b = lineOf(lines, state.cursor);
+    pushUndo(state);
+    shiftLines(state, dir, Math.min(a, b), Math.max(a, b), mult);
+    state.anchor = null;
+    state.mode = MODE.NORMAL;
+    resetPending(state);
+    return { state: state, handled: true };
+  }
+
   // ---- undo / redo ----------------------------------------------------------
 
   function undo(state) {
@@ -1468,6 +1565,7 @@
       desiredCol: null,
       anchor: null,
       lastFind: null,
+      shiftwidth: SHIFTWIDTH,
       search: { query: "", dir: 1 },
       hlsearch: false,
       lastSearchInfo: null,

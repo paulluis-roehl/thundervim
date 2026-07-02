@@ -27,12 +27,15 @@
     // window-level Escape binding.
     insertEscapeSequence: "jk",
     escapeTimeoutMs: 500,
+    // Spaces inserted/removed by >> and << (and >{motion} etc.).
+    shiftWidth: 4,
   };
 
   var engine = globalThis.ThundervimEngine;
   if (!engine) return; // engine.js failed to load; do nothing.
 
   var state = engine.createState("", 0);
+  state.shiftwidth = CONFIG.shiftWidth;
   state.mode =
     CONFIG.defaultMode === "normal" ? engine.MODE.NORMAL : engine.MODE.INSERT;
   var enabled = CONFIG.enableOnStart;

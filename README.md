@@ -23,6 +23,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Delete | `x`, `dd`, `d{motion}`, `D` |
 | Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
 | Join | `J`, `[count]J`, and `J` over a Visual selection |
+| Indent | `>>` / `<<`, `>{motion}` / `<{motion}`, `>ip`, and Visual `>` / `<` (spaces, `shiftWidth` in `compose.js`) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
 | Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
 | Replace | `r{char}` |

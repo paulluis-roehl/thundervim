@@ -687,6 +687,72 @@ test("visual g~ toggles the selection", () => {
   assert.strictEqual(s.text, "fOO");
 });
 
+// ---- indent / dedent -------------------------------------------------------
+
+test(">> indents the line by one shiftwidth", () => {
+  const s = normal("foo", 0);
+  feed(s, [">", ">"]);
+  assert.strictEqual(s.text, "    foo");
+  assert.strictEqual(s.cursor, 4);
+});
+
+test("<< dedents the line", () => {
+  const s = normal("    foo", 4);
+  feed(s, ["<", "<"]);
+  assert.strictEqual(s.text, "foo");
+});
+
+test("<< removes only up to one shiftwidth of leading space", () => {
+  const s = normal("      foo", 6); // 6 spaces
+  feed(s, ["<", "<"]);
+  assert.strictEqual(s.text, "  foo"); // 2 left
+});
+
+test("2>> indents two lines", () => {
+  const s = normal("a\nb\nc", 0);
+  feed(s, ["2", ">", ">"]);
+  assert.strictEqual(s.text, "    a\n    b\nc");
+});
+
+test(">j indents the two spanned lines", () => {
+  const s = normal("a\nb\nc", 0);
+  feed(s, [">", "j"]);
+  assert.strictEqual(s.text, "    a\n    b\nc");
+});
+
+test(">ip indents the paragraph", () => {
+  const s = normal("a\nb\n\nc", 0);
+  feed(s, [">", "i", "p"]);
+  assert.strictEqual(s.text, "    a\n    b\n\nc");
+});
+
+test(">> leaves an empty line untouched", () => {
+  const s = normal("", 0);
+  feed(s, [">", ">"]);
+  assert.strictEqual(s.text, "");
+});
+
+test("visual > indents the selected lines once", () => {
+  const s = normal("a\nb", 0);
+  feed(s, ["V", "j", ">"]);
+  assert.strictEqual(s.text, "    a\n    b");
+  assert.strictEqual(s.mode, vim.MODE.NORMAL);
+});
+
+test("visual 2> uses the count as a shiftwidth multiplier", () => {
+  const s = normal("a", 0);
+  feed(s, ["v", "2", ">"]);
+  assert.strictEqual(s.text, "        a"); // 8 spaces
+});
+
+test(". repeats >>", () => {
+  const s = normal("a\nb", 0);
+  feed(s, [">", ">"]); // "    a\nb"
+  feed(s, "j");
+  feed(s, "."); // indent line b too
+  assert.strictEqual(s.text, "    a\n    b");
+});
+
 // ---- search ----------------------------------------------------------------
 
 test("setSearch jumps to the next match; n steps with wrap", () => {
