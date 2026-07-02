@@ -22,10 +22,11 @@
     defaultMode: "insert", // 'insert' | 'normal'
     // Toggle Thundervim on/off for this window. Checked before anything else.
     toggle: { ctrl: true, alt: true, key: "v" },
-    // Type these two keys quickly in Insert mode to act as <Esc>. Set to ''
-    // to disable. Useful because a compose script cannot always block the
-    // window-level Escape binding.
-    insertEscapeSequence: "jk",
+    // Type these two keys quickly in Insert mode to act as <Esc>. Empty ('')
+    // disables it, matching vanilla vim where only <Esc> leaves Insert mode.
+    // Set e.g. to "jk" if you want the classic escape-sequence convenience and
+    // the window-level Escape binding proves unreliable.
+    insertEscapeSequence: "",
     escapeTimeoutMs: 500,
     // Spaces inserted/removed by >> and << (and >{motion} etc.).
     shiftWidth: 4,

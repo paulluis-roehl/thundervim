@@ -53,9 +53,10 @@ register, so `y`/`p` never touch your system clipboard.
 - Any `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird, so
   **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), etc. still work. (`Ctrl-r` is the
   one exception — it is redo.)
-- **`jk` escape:** because a compose script cannot always block Thunderbird's
-  window-level `Esc`, typing `jk` quickly in Insert mode also returns to Normal
-  mode. Configurable in `src/compose.js`.
+- **Insert-mode escape:** `Esc` returns to Normal mode. An optional two-key
+  escape sequence (e.g. `jk`) can be enabled via `insertEscapeSequence` in
+  `src/compose.js` as a fallback if Thunderbird's window-level `Esc` proves
+  unreliable. It is disabled by default, matching vanilla vim.
 
 ## Install (temporary add-on)
 
@@ -89,7 +90,7 @@ var CONFIG = {
   enableOnStart: true,
   defaultMode: 'insert',              // 'insert' | 'normal'
   toggle: { ctrl: true, alt: true, key: 'v' },
-  insertEscapeSequence: 'jk',         // '' to disable
+  insertEscapeSequence: '',           // e.g. 'jk'; '' = only <Esc> leaves Insert
   escapeTimeoutMs: 500,
   shiftWidth: 4,                      // spaces for >> / <<
   textWidth: 72                       // wrap column for gq
