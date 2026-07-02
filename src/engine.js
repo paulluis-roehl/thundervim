@@ -1143,18 +1143,27 @@
 
     // Awaiting a character for `r`.
     if (state.pending.replace) {
-      if (key.length === 1) {
+      var rEnter = key === "Enter" || key === "\n" || key === "\r";
+      if (key.length === 1 || rEnter) {
         var rn = effectiveCount(state);
         var rle = lineEndAt(state.text, state.cursor);
         if (state.cursor + rn <= rle) {
           pushUndo(state);
-          replaceRange(
-            state,
-            state.cursor,
-            state.cursor + rn,
-            repeatChar(key, rn),
-          );
-          state.cursor = clampNormal(state.text, state.cursor + rn - 1);
+          if (rEnter) {
+            // r<CR>: replace the count chars with a single line break and land
+            // on the first column of the new line, matching vim.
+            var rat = state.cursor;
+            replaceRange(state, rat, rat + rn, "\n");
+            state.cursor = clampNormal(state.text, rat + 1);
+          } else {
+            replaceRange(
+              state,
+              state.cursor,
+              state.cursor + rn,
+              repeatChar(key, rn),
+            );
+            state.cursor = clampNormal(state.text, state.cursor + rn - 1);
+          }
         }
       }
       resetPending(state);

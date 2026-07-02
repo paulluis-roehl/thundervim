@@ -12,6 +12,7 @@ const vim = require("../src/engine.js");
 //   '<C-r>'     -> Ctrl-r
 function ev(spec) {
   if (spec === "<Esc>") return { key: "Escape" };
+  if (spec === "<CR>" || spec === "<Enter>") return { key: "Enter" };
   const m = /^<C-(.)>$/.exec(spec);
   if (m) return { key: m[1], ctrl: true };
   return { key: spec };
@@ -214,6 +215,33 @@ test("r replaces a single character", () => {
   feed(s, ["r", "b"]);
   assert.strictEqual(s.text, "bat");
   assert.strictEqual(s.cursor, 0);
+});
+
+test("r<CR> replaces a space with a newline and lands on the new line", () => {
+  const s = normal("foo bar", 3); // on the space
+  feed(s, ["r", "<CR>"]);
+  assert.strictEqual(s.text, "foo\nbar");
+  assert.strictEqual(s.cursor, 4); // first column of the new line
+});
+
+test("r<CR> replaces the character under the cursor with a newline", () => {
+  const s = normal("abXcd", 2); // on 'X'
+  feed(s, ["r", "<CR>"]);
+  assert.strictEqual(s.text, "ab\ncd");
+  assert.strictEqual(s.cursor, 3);
+});
+
+test("count r<CR> replaces several chars with one newline", () => {
+  const s = normal("abcdef", 0);
+  feed(s, ["3", "r", "<CR>"]);
+  assert.strictEqual(s.text, "\ndef");
+  assert.strictEqual(s.cursor, 1);
+});
+
+test("r<CR> does nothing when the count runs past the line end", () => {
+  const s = normal("ab\ncd", 0);
+  feed(s, ["5", "r", "<CR>"]); // only 2 chars on the line
+  assert.strictEqual(s.text, "ab\ncd");
 });
 
 // ---- undo / redo -----------------------------------------------------------

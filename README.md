@@ -72,7 +72,7 @@ misbehaves on a complex message, please file an issue.
 | Reflow | `gqq` / `[count]gqq`, `gq{motion}`, `gqip` / `gqap`, and Visual `gq` (wraps at column 72, keeps quote markers like `> `) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` |
 | Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p s}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`, `das`); also selectable in Visual mode |
-| Replace | `r{char}` |
+| Replace | `r{char}`, and `r<Enter>` to split the line (replace with a newline) |
 | Case | `~` (with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
 | Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
 | Search | `/pat` `?pat` (smartcase), `*` / `#` (word under cursor), `n` / `N` to step; matches highlight while typing and persist until `Esc` |
