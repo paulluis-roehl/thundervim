@@ -45,7 +45,9 @@ register, so `y`/`p` never touch your system clipboard.
 - **Default mode is Insert** when a compose window opens, so you can start typing
   immediately. Press `Esc` (or `jk`) to enter Normal mode.
 - The current mode is shown in a **status bar** pinned to the bottom of the
-  editor, and a **block cursor** highlights the character under the cursor in
+  editor, with a vim-style **ruler** on the right showing the cursor's
+  `line,column` and its `Top`/`Bot`/`All`/percentage position through the
+  buffer. A **block cursor** highlights the character under the cursor in
   Normal/Visual mode. Both live outside the message body and are never sent.
 - In Insert mode the native editor handles typing normally (IME, spellcheck and
   reply-quoting keep working); Thundervim only intercepts the keys that leave

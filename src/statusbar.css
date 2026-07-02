@@ -10,6 +10,9 @@
     bottom: 0;
     z-index: 2147483647;
     box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
     padding: 2px 8px;
     font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
     font-size: 12px;
@@ -21,6 +24,12 @@
     pointer-events: none;
     user-select: none;
     white-space: pre;
+}
+
+/* Right-aligned ruler (line,col + Top/Bot/All/percentage). */
+#thundervim-status .tv-right {
+    padding-left: 16px;
+    opacity: 0.85;
 }
 
 #thundervim-status[data-mode="insert"] {

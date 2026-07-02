@@ -406,7 +406,22 @@
       bar.setAttribute("contenteditable", "false");
       (document.documentElement || document.body).appendChild(bar);
     }
+    if (!bar.querySelector(".tv-left")) {
+      var left = document.createElement("span");
+      left.className = "tv-left";
+      var right = document.createElement("span");
+      right.className = "tv-right";
+      bar.appendChild(left);
+      bar.appendChild(right);
+    }
     return bar;
+  }
+  function setBar(leftText, rightText, mode) {
+    var bar = ensureBar();
+    bar.querySelector(".tv-left").textContent = leftText;
+    bar.querySelector(".tv-right").textContent = rightText || "";
+    bar.setAttribute("data-mode", mode);
+    render();
   }
   function modeLabel() {
     switch (state.mode) {
@@ -429,28 +444,43 @@
     if (p.replace) s += "r";
     return s ? "  " + s : "";
   }
+  // vim-style ruler: 1-based line and column of the cursor, plus a Top/Bot/All/
+  // percentage indicator of how far the cursor line sits through the buffer.
+  function ruler() {
+    var text = state.text;
+    var pos = state.cursor;
+    if (pos < 0) pos = 0;
+    if (pos > text.length) pos = text.length;
+    var ls = text.lastIndexOf("\n", pos - 1) + 1;
+    var nlEnd = text.indexOf("\n", pos);
+    var le = nlEnd === -1 ? text.length : nlEnd;
+    var lineNum = text.slice(0, pos).split("\n").length;
+    var totalLines = text.split("\n").length;
+    // vim shows `0-1` on an empty line (byte col 0, virtual col 1).
+    var colText = le - ls === 0 ? "0-1" : String(pos - ls + 1);
+    var pos3;
+    if (totalLines <= 1) pos3 = "All";
+    else if (lineNum === 1) pos3 = "Top";
+    else if (lineNum === totalLines) pos3 = "Bot";
+    else pos3 = Math.floor(((lineNum - 1) * 100) / (totalLines - 1)) + "%";
+    return lineNum + "," + colText + "   " + pos3;
+  }
   function updateBar() {
-    var bar = ensureBar();
     if (!enabled) {
-      bar.textContent = "-- vim off --";
-      bar.setAttribute("data-mode", "off");
-      render();
+      setBar("-- vim off --", "", "off");
       return;
     }
     if (searching) {
-      bar.textContent = (searching.dir > 0 ? "/" : "?") + searching.query;
-      bar.setAttribute("data-mode", "search");
-      render();
+      setBar((searching.dir > 0 ? "/" : "?") + searching.query, "", "search");
       return;
     }
-    bar.textContent =
+    var left =
       "-- " +
       modeLabel() +
       " --" +
       pendingHint() +
       (searchMsg ? "  " + searchMsg : "");
-    bar.setAttribute("data-mode", state.mode);
-    render();
+    setBar(left, ruler(), state.mode);
   }
 
   // --------------------------------------------------------- key handling
