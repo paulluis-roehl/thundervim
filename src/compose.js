@@ -273,6 +273,19 @@
     ensureTrailingPad(state.text);
   }
 
+  // After the app handled a Cmd chord (paste/cut/undo) in Normal/Visual mode,
+  // pull the engine's buffer back in line with the DOM. A pure formatting or
+  // copy command leaves the text unchanged, so we no-op and keep the current
+  // mode/cursor/selection intact.
+  function resyncFromDom() {
+    var b = readBuffer();
+    if (!b || b.text === state.text) return;
+    engine.syncFromEditor(state, b.text, b.caret);
+    state.mode = engine.MODE.NORMAL;
+    syncDom(false);
+    updateBar();
+  }
+
   // A buffer ending in "\n" (or empty) needs a trailing padding <br> so the last
   // empty line is reachable under pre-wrap; readBuffer/domPointAt skip it as a
   // bogus node. Mirrors the invariant the flat writeBuffer used to maintain.
@@ -693,6 +706,24 @@
     }, 0);
   }
 
+  // Input types produced by the plain character insertion / deletion that a
+  // swallowed vim key would otherwise cause. Only these are cancelled while
+  // `suppressInput` is set. Everything else (formatBold/Italic/Underline,
+  // historyUndo/Redo, insertFromPaste, ...) must always go through, so Cmd+B/I/U
+  // and the formatting toolbar keep working.
+  var TEXT_EDIT_INPUT_TYPES = {
+    insertText: 1,
+    insertCompositionText: 1,
+    insertReplacementText: 1,
+    insertLineBreak: 1,
+    insertParagraph: 1,
+    deleteContent: 1,
+    deleteContentBackward: 1,
+    deleteContentForward: 1,
+    deleteWordBackward: 1,
+    deleteWordForward: 1,
+  };
+
   // Cancel the editor edit that a swallowed key would otherwise produce. This
   // fires after our keydown handler ran and set `suppressInput`. The flag stays
   // set only for the current tick (see `swallow`), so both keypress and
@@ -700,6 +731,15 @@
   // unrelated input events.
   function onInputEvent(e) {
     if (!suppressInput) return;
+    // A `beforeinput` carries an inputType; only suppress genuine text edits.
+    // Formatting/clipboard/history commands (which have no keypress) pass.
+    if (
+      e.type === "beforeinput" &&
+      e.inputType &&
+      !TEXT_EDIT_INPUT_TYPES[e.inputType]
+    ) {
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     if (e.stopImmediatePropagation) e.stopImmediatePropagation();
@@ -868,6 +908,18 @@
     // The search prompt owns every key while it is open.
     if (searching) {
       handleSearchKey(e, ev);
+      return;
+    }
+
+    // Cmd (meta) chords belong to the application, not vim. macOS binds Cmd+B/
+    // I/U to Bold/Italic/Underline and Cmd+C/V/X/Z to clipboard & undo; vim has
+    // no Cmd bindings. Never swallow these in any mode, or e.g. Cmd+B is read as
+    // the `b` motion and the formatting command never reaches Thunderbird. In
+    // Normal/Visual mode a native edit (paste/cut/undo) can change the buffer,
+    // so resync the engine from the DOM afterwards to avoid desync. Format and
+    // copy leave the text unchanged and preserve the current mode/selection.
+    if (ev.meta) {
+      if (state.mode !== engine.MODE.INSERT) setTimeout(resyncFromDom, 0);
       return;
     }
 
