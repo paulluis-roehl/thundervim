@@ -444,11 +444,9 @@
     if (p.replace) s += "r";
     return s ? "  " + s : "";
   }
-  // vim-style ruler: 1-based line and column of the cursor, plus a Top/Bot/All/
-  // percentage indicator of how far the cursor line sits through the buffer.
-  function ruler() {
-    var text = state.text;
-    var pos = state.cursor;
+  // vim-style ruler: 1-based line and column of `pos`, plus a Top/Bot/All/
+  // percentage indicator of how far that line sits through `text`.
+  function rulerFor(text, pos) {
     if (pos < 0) pos = 0;
     if (pos > text.length) pos = text.length;
     var ls = text.lastIndexOf("\n", pos - 1) + 1;
@@ -464,6 +462,19 @@
     else if (lineNum === totalLines) pos3 = "Bot";
     else pos3 = Math.floor(((lineNum - 1) * 100) / (totalLines - 1)) + "%";
     return lineNum + "," + colText + "   " + pos3;
+  }
+  function ruler() {
+    return rulerFor(state.text, state.cursor);
+  }
+  // In Insert mode the engine's cursor is stale (the native editor owns the
+  // caret), so recompute the ruler from the live DOM caret on every caret move.
+  function updateRulerLive() {
+    if (!enabled || state.mode !== engine.MODE.INSERT) return;
+    var b = readBuffer();
+    if (!b) return;
+    var bar = ensureBar();
+    var r = bar.querySelector(".tv-right");
+    if (r) r.textContent = rulerFor(b.text, b.caret);
   }
   function updateBar() {
     if (!enabled) {
@@ -740,6 +751,9 @@
     document.addEventListener("keydown", onKeydown, true);
     document.addEventListener("keypress", onInputEvent, true);
     document.addEventListener("beforeinput", onInputEvent, true);
+    // While typing in Insert mode the engine cursor is stale, so keep the ruler
+    // live from the DOM caret. `selectionchange` covers typing, arrows and clicks.
+    document.addEventListener("selectionchange", updateRulerLive);
     // Keep the block cursor and selection aligned when the view moves without
     // a keystroke.
     window.addEventListener("scroll", render, true);
