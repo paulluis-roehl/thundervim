@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Thundervim",
+  "version": "0.1.0",
+  "description": "Vim keybindings for editing plain-text email in the Thunderbird compose window.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "thundervim@local",
+      "strict_min_version": "151.0"
+    }
+  },
+  "permissions": ["compose"],
+  "compose_scripts": [
+    {
+      "js": ["src/engine.js", "src/compose.js"],
+      "css": ["src/statusbar.css"]
+    }
+  ]
+}

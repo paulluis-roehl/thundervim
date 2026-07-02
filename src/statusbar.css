@@ -1,0 +1,66 @@
+/* Thundervim mode status bar.
+ *
+ * The bar is attached to <html> (outside <body>) so it never becomes part of
+ * the composed message. It is fixed to the bottom of the editor viewport. */
+
+#thundervim-status {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2147483647;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    color: #e6e6e6;
+    background: #202225;
+    border-top: 1px solid #000;
+    pointer-events: none;
+    user-select: none;
+    white-space: pre;
+}
+
+#thundervim-status[data-mode="insert"] {
+    background: #2e7d32; /* green */
+    color: #ffffff;
+}
+#thundervim-status[data-mode="normal"] {
+    background: #202225; /* neutral */
+    color: #e6e6e6;
+}
+#thundervim-status[data-mode="visual"],
+#thundervim-status[data-mode="visual-line"] {
+    background: #6a1b9a; /* purple */
+    color: #ffffff;
+}
+#thundervim-status[data-mode="off"] {
+    background: #4a4a4a;
+    color: #bdbdbd;
+}
+
+/* Fake block cursor for Normal / Visual mode. `mix-blend-mode: difference`
+ * inverts whatever is underneath, so it reads as a classic block cursor on top
+ * of the text regardless of theme. It lives on <html>, never in the message. */
+#thundervim-cursor {
+    position: fixed;
+    z-index: 2147483646;
+    background: #ffffff;
+    mix-blend-mode: difference;
+    pointer-events: none;
+    display: none;
+}
+
+/* Visual-mode selection highlight. One rect per line fragment, drawn just below
+ * the block cursor so the cursor head stays visible. Also on <html>. */
+#thundervim-highlights {
+    display: none;
+}
+.thundervim-hl {
+    position: fixed;
+    z-index: 2147483645;
+    background: rgba(120, 160, 255, 0.4);
+    pointer-events: none;
+}
