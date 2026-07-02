@@ -492,6 +492,20 @@
     }
     if (!enabled) return;
 
+    // Ignore standalone modifier presses. Their keydown fires between a prefix
+    // key (r, i, a, ...) and the real character, and must not disturb pending
+    // engine state (e.g. `rH` or `ci(` where the char needs Shift).
+    if (
+      ev.key === "Shift" ||
+      ev.key === "Control" ||
+      ev.key === "Alt" ||
+      ev.key === "Meta" ||
+      ev.key === "CapsLock" ||
+      ev.key === "AltGraph"
+    ) {
+      return;
+    }
+
     if (state.mode === engine.MODE.INSERT) {
       if (ev.key === "Escape") {
         var buf = readBuffer();

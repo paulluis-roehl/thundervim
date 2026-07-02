@@ -129,6 +129,154 @@
     return 0;
   }
 
+  // ---- text objects ---------------------------------------------------------
+
+  // Resolve a text object (iw, aw, i(, a", ip, ...) into a { start, end } range.
+  function resolveTextObject(state, inner, key) {
+    var text = state.text;
+    var pos = state.cursor;
+    switch (key) {
+      case "w":
+        return wordObject(text, pos, inner, false);
+      case "W":
+        return wordObject(text, pos, inner, true);
+      case '"':
+        return quoteObject(text, pos, inner, '"');
+      case "'":
+        return quoteObject(text, pos, inner, "'");
+      case "`":
+        return quoteObject(text, pos, inner, "`");
+      case "(":
+      case ")":
+      case "b":
+        return pairObject(text, pos, inner, "(", ")");
+      case "{":
+      case "}":
+      case "B":
+        return pairObject(text, pos, inner, "{", "}");
+      case "[":
+      case "]":
+        return pairObject(text, pos, inner, "[", "]");
+      case "<":
+      case ">":
+        return pairObject(text, pos, inner, "<", ">");
+      case "p":
+        return paragraphObject(text, pos, inner);
+      default:
+        return null;
+    }
+  }
+
+  function wordObject(text, pos, inner, big) {
+    if (text.length === 0) return { start: 0, end: 0 };
+    if (pos >= text.length) pos = text.length - 1;
+    var cl = classAt(text, pos, big);
+    var s = pos,
+      e = pos;
+    while (s > 0 && classAt(text, s - 1, big) === cl) s--;
+    while (e + 1 < text.length && classAt(text, e + 1, big) === cl) e++;
+    var start = s,
+      end = e + 1;
+    if (!inner) {
+      var te = end;
+      while (
+        te < text.length &&
+        text[te] !== "\n" &&
+        classAt(text, te, big) === 0
+      )
+        te++;
+      if (te > end) {
+        end = te;
+      } else {
+        while (
+          start > 0 &&
+          text[start - 1] !== "\n" &&
+          classAt(text, start - 1, big) === 0
+        )
+          start--;
+      }
+    }
+    return { start: start, end: end };
+  }
+
+  function quoteObject(text, pos, inner, q) {
+    var ls = lineStartAt(text, pos);
+    var le = lineEndAt(text, pos);
+    var idxs = [];
+    for (var i = ls; i < le; i++) if (text[i] === q) idxs.push(i);
+    for (var k = 0; k + 1 < idxs.length; k += 2) {
+      var a = idxs[k],
+        b = idxs[k + 1];
+      if (pos >= a && pos <= b) return quoteRange(text, a, b, le, inner);
+    }
+    if (idxs.length >= 2) return quoteRange(text, idxs[0], idxs[1], le, inner);
+    return null;
+  }
+  function quoteRange(text, a, b, le, inner) {
+    if (inner) return { start: a + 1, end: b };
+    var end = b + 1;
+    while (end < le && (text[end] === " " || text[end] === "\t")) end++;
+    return { start: a, end: end };
+  }
+
+  function pairObject(text, pos, inner, open, close) {
+    var depth = 0,
+      openIdx = -1,
+      i;
+    for (i = pos; i >= 0; i--) {
+      var c = text[i];
+      if (c === close && i < pos) depth++;
+      else if (c === open) {
+        if (depth === 0) {
+          openIdx = i;
+          break;
+        }
+        depth--;
+      }
+    }
+    if (openIdx < 0) return null;
+    var d = 0,
+      closeIdx = -1;
+    for (i = openIdx + 1; i < text.length; i++) {
+      var cc = text[i];
+      if (cc === open) d++;
+      else if (cc === close) {
+        if (d === 0) {
+          closeIdx = i;
+          break;
+        }
+        d--;
+      }
+    }
+    if (closeIdx < 0) return null;
+    if (inner) return { start: openIdx + 1, end: closeIdx };
+    return { start: openIdx, end: closeIdx + 1 };
+  }
+
+  function paragraphObject(text, pos, inner) {
+    var lines = buildLines(text);
+    var li = lineOf(lines, pos);
+    function blank(n) {
+      return lines[n].start === lines[n].end;
+    }
+    var s = li,
+      e = li;
+    if (blank(li)) {
+      while (e + 1 < lines.length && blank(e + 1)) e++;
+      while (s - 1 >= 0 && blank(s - 1)) s--;
+    } else {
+      while (s - 1 >= 0 && !blank(s - 1)) s--;
+      while (e + 1 < lines.length && !blank(e + 1)) e++;
+    }
+    var end = lines[e].end;
+    if (!inner) {
+      var te = e;
+      while (te + 1 < lines.length && blank(te + 1)) te++;
+      if (te > e) end = lines[te].end;
+    }
+    return { start: lines[s].start, end: end };
+  }
+
   // ---- motions --------------------------------------------------------------
 
   // Resolve a motion key into { pos, kind } where kind is one of
@@ -307,6 +455,27 @@
     }
   }
 
+  // Apply a charwise operator to an explicit [start, end) range (text objects).
+  function applyRange(state, op, start, end) {
+    if (start > end) {
+      var t = start;
+      start = end;
+      end = t;
+    }
+    state.register = { text: state.text.slice(start, end), linewise: false };
+    if (op === "y") {
+      state.cursor = clampNormal(state.text, start);
+      return;
+    }
+    replaceRange(state, start, end, "");
+    if (op === "c") {
+      state.cursor = start;
+      state.mode = MODE.INSERT;
+    } else {
+      state.cursor = clampNormal(state.text, start);
+    }
+  }
+
   // ---- paste ----------------------------------------------------------------
 
   function paste(state, after, count) {
@@ -354,6 +523,7 @@
       opCount: "",
       g: false,
       replace: false,
+      textobj: null,
     };
   }
   function currentCount(state) {
@@ -443,6 +613,29 @@
       return { state: state, handled: true };
     }
 
+    // Awaiting the object char for a text object (iw, a(, ...).
+    if (state.pending.textobj) {
+      var inner = state.pending.textobj === "i";
+      var visualTO = state.mode === MODE.VISUAL || state.mode === MODE.VLINE;
+      var op = state.pending.op;
+      var range = resolveTextObject(state, inner, key);
+      if (range) {
+        if (visualTO) {
+          state.anchor = range.start;
+          state.cursor = clampNormal(
+            state.text,
+            Math.max(range.start, range.end - 1),
+          );
+          if (state.mode === MODE.VLINE) state.mode = MODE.VISUAL;
+        } else if (op) {
+          pushUndo(state);
+          applyRange(state, op, range.start, range.end);
+        }
+      }
+      resetPending(state);
+      return { state: state, handled: true };
+    }
+
     // Count accumulation ("0" is a motion unless a count is already building).
     if (/[0-9]/.test(key) && !(key === "0" && !currentCount(state))) {
       if (state.pending.op) state.pending.opCount += key;
@@ -462,9 +655,13 @@
       return { state: state, handled: true };
     }
 
-    // Pending operator: expect a motion or a doubled operator.
+    // Pending operator: expect a motion, a text object, or a doubled operator.
     if (state.pending.op) {
       var op = state.pending.op;
+      if (key === "i" || key === "a") {
+        state.pending.textobj = key;
+        return { state: state, handled: true };
+      }
       if (key === op) {
         var cnt = effectiveCount(state);
         pushUndo(state);
@@ -542,6 +739,12 @@
     var visual = state.mode === MODE.VISUAL || state.mode === MODE.VLINE;
 
     if (MOTION_KEYS[key]) return runMotionOrOperator(state, key);
+
+    // In visual mode, `i`/`a` begin a text-object selection instead of Insert.
+    if (visual && (key === "i" || key === "a")) {
+      state.pending.textobj = key;
+      return { state: state, handled: true };
+    }
 
     switch (key) {
       case "i":

@@ -22,6 +22,7 @@ Built and verified against **Thunderbird 152** (Manifest V3, `compose_scripts`).
 | Delete | `x`, `dd`, `d{motion}`, `D` |
 | Change | `cc`, `c{motion}`, `C` (`cw` behaves like `ce`) |
 | Yank / paste | `yy`, `y{motion}`, `p`, `P` (internal register, charwise + linewise) |
+| Text objects | `{d,c,y}{i,a}{w W " ' ` ( ) b { } B [ ] < > p}` (e.g. `ciw`, `di"`, `ci(`, `daw`, `dip`); also selectable in Visual mode |
 | Replace | `r{char}` |
 | Undo / redo | `u`, `Ctrl-r` |
 | Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
@@ -111,6 +112,6 @@ thundervim/
 
 ## Known limitations (v1)
 
-- No `/` search, `:` ex-commands, text objects (`iw`, `i"`), `f/F/t/T`, marks,
-  named registers, macros, or `.` dot-repeat. These were deliberately deferred.
+- No `/` search, `:` ex-commands, `f/F/t/T`, marks, named registers, macros, or
+  `.` dot-repeat. These were deliberately deferred.
 - HTML compose is unsupported.
