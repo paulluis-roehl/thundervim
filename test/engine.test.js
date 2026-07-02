@@ -448,6 +448,48 @@ test("visual as selects the sentence", () => {
   assert.strictEqual(s.text, "Three four.");
 });
 
+// ---- sentence motions ( and ) ----------------------------------------------
+
+test(") moves to the start of the next sentence", () => {
+  const s = normal("One two. Three four. Five six.", 0);
+  feed(s, [")"]);
+  assert.strictEqual(s.cursor, 9);
+  feed(s, [")"]);
+  assert.strictEqual(s.cursor, 21);
+  feed(s, [")"]); // past the last sentence -> end of buffer
+  assert.strictEqual(s.cursor, 29);
+});
+
+test("( moves back to the sentence start", () => {
+  const s = normal("One two. Three four. Five six.", 24);
+  feed(s, ["("]);
+  assert.strictEqual(s.cursor, 21);
+  feed(s, ["("]);
+  assert.strictEqual(s.cursor, 9);
+  feed(s, ["("]);
+  assert.strictEqual(s.cursor, 0);
+});
+
+test("2) skips two sentences", () => {
+  const s = normal("One two. Three four. Five six.", 0);
+  feed(s, ["2", ")"]);
+  assert.strictEqual(s.cursor, 21);
+});
+
+test("d) deletes to the start of the next sentence", () => {
+  const s = normal("One two. Three four. Five six.", 0);
+  feed(s, ["d", ")"]);
+  assert.strictEqual(s.text, "Three four. Five six.");
+});
+
+test(") stops at a blank line", () => {
+  const s = normal("A cat.\n\nA dog.", 0);
+  feed(s, [")"]);
+  assert.strictEqual(s.cursor, 7); // the blank line
+  feed(s, [")"]);
+  assert.strictEqual(s.cursor, 8); // start of the next paragraph
+});
+
 // ---- f/F/t/T and ; , -------------------------------------------------------
 
 test("f moves to the next occurrence on the line", () => {

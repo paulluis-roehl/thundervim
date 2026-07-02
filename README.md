@@ -61,7 +61,7 @@ misbehaves on a complex message, please file an issue.
 
 | Group | Keys |
 | --- | --- |
-| Motions | `h j k l`, `w W b B e E`, `ge` / `gE`, `0 ^ $`, `gg G`, `{ }`, with counts (`3w`, `5j`) |
+| Motions | `h j k l`, `w W b B e E`, `ge` / `gE`, `0 ^ $`, `gg G`, `{ }`, `( )` (sentences), with counts (`3w`, `5j`) |
 | Find in line | `f{char}` `F{char}` `t{char}` `T{char}`, repeat with `;` / `,` (e.g. `df,`, `ct)`) |
 | Match bracket | `%` (jumps between `()`/`[]`/`{}`; also an inclusive motion, e.g. `d%`, `c%`) |
 | Enter insert | `i a I A o O` |

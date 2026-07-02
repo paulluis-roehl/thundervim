@@ -368,6 +368,95 @@
     return { start: st, end: sel.contentEnd };
   }
 
+  // Offsets where a sentence begins across the whole buffer, ascending. Used by
+  // the ( and ) motions. A blank line is a boundary; within a paragraph the
+  // split matches sentenceObject (terminator + closers + whitespace).
+  function sentenceStarts(text) {
+    function isWs(c) {
+      return c === " " || c === "\t" || c === "\n";
+    }
+    function isCloser(c) {
+      return c === ")" || c === "]" || c === '"' || c === "'";
+    }
+    var lines = buildLines(text);
+    var starts = [0];
+    var li = 0;
+    while (li < lines.length) {
+      if (lines[li].start === lines[li].end) {
+        starts.push(lines[li].start); // blank line is its own boundary
+        li++;
+        continue;
+      }
+      var s = li,
+        e = li;
+      while (e + 1 < lines.length && lines[e + 1].start !== lines[e + 1].end)
+        e++;
+      var pStart = lines[s].start;
+      var pEnd = lines[e].end;
+      var p = pStart;
+      while (p < pEnd) {
+        var start = p;
+        while (start < pEnd && isWs(text[start])) start++;
+        if (start >= pEnd) break;
+        starts.push(start);
+        var j = start;
+        var contentEnd = -1;
+        while (j < pEnd) {
+          var c = text[j];
+          if (c === "." || c === "!" || c === "?") {
+            var k = j + 1;
+            while (k < pEnd && isCloser(text[k])) k++;
+            if (k >= pEnd || isWs(text[k])) {
+              contentEnd = k;
+              break;
+            }
+            j = k;
+          } else {
+            j++;
+          }
+        }
+        if (contentEnd < 0) break; // last sentence of the paragraph
+        var end = contentEnd;
+        while (end < pEnd && isWs(text[end])) end++;
+        p = end;
+      }
+      li = e + 1;
+    }
+    starts.sort(function (a, b) {
+      return a - b;
+    });
+    var uniq = [];
+    for (var m = 0; m < starts.length; m++)
+      if (m === 0 || starts[m] !== starts[m - 1]) uniq.push(starts[m]);
+    return uniq;
+  }
+
+  function sentenceForward(text, pos, count) {
+    var starts = sentenceStarts(text);
+    var idx = -1;
+    for (var m = 0; m < starts.length; m++)
+      if (starts[m] > pos) {
+        idx = m;
+        break;
+      }
+    if (idx < 0) return text.length;
+    var t = idx + (count - 1);
+    return t >= starts.length ? text.length : starts[t];
+  }
+
+  function sentenceBack(text, pos, count) {
+    var starts = sentenceStarts(text);
+    var idx = -1;
+    for (var m = starts.length - 1; m >= 0; m--)
+      if (starts[m] < pos) {
+        idx = m;
+        break;
+      }
+    if (idx < 0) return 0;
+    var t = idx - (count - 1);
+    return t < 0 ? 0 : starts[t];
+  }
+
   // ---- motions --------------------------------------------------------------
 
   // Resolve a motion key into { pos, kind } where kind is one of
@@ -432,6 +521,10 @@
         return { pos: paragraphBack(text, pos), kind: "excl" };
       case "}":
         return { pos: paragraphForward(text, pos), kind: "excl" };
+      case "(":
+        return { pos: sentenceBack(text, pos, count), kind: "excl" };
+      case ")":
+        return { pos: sentenceForward(text, pos, count), kind: "excl" };
       case "j":
       case "k": {
         var v = moveVertical(
@@ -987,6 +1080,8 @@
     "^": 1,
     "{": 1,
     "}": 1,
+    "(": 1,
+    ")": 1,
     G: 1,
     "%": 1,
   };
