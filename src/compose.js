@@ -729,6 +729,7 @@
   function normalize(e) {
     return {
       key: e.key,
+      code: e.code,
       shift: e.shiftKey,
       ctrl: e.ctrlKey,
       alt: e.altKey,
@@ -934,9 +935,16 @@
       return;
     }
 
-    // Debug chord (Ctrl-Alt-D): log the DOM + linear model to the console. Works
-    // regardless of enabled state so it can capture round-trip bug reports.
-    if (ev.ctrl && ev.alt && !ev.meta && ev.key.toLowerCase() === "d") {
+    // Debug chord (Ctrl-Alt-D): dump the DOM + linear model. Works regardless of
+    // enabled state so it can capture round-trip bug reports. Match on ev.code
+    // (physical KeyD): on macOS the Option/Alt key rewrites ev.key (Option+D ->
+    // a dead key), so ev.key would never equal "d" while Alt is held.
+    if (
+      ev.ctrl &&
+      ev.alt &&
+      !ev.meta &&
+      (ev.code === "KeyD" || ev.key.toLowerCase() === "d")
+    ) {
       swallow(e);
       dumpState("manual");
       return;
