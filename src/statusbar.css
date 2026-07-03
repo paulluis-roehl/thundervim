@@ -1,63 +1,8 @@
 /* Thundervim overlays.
  *
- * The mode status bar is visible while editing, but its labels are rendered as
- * textless <img alt=""> PNG data URLs so Thunderbird's plain-text serializer has
- * no DOM/CSS/SVG text to append to sent mail.
+ * The mode status bar is styled inside a Shadow DOM in compose.ts, so this file
+ * only contains the block cursor and selection/search highlight overlays.
  */
-
-#thundervim-status {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 2147483647;
-    box-sizing: border-box;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 2px 8px;
-    font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    letter-spacing: 0.02em;
-    color: #e6e6e6;
-    background: #202225;
-    border-top: 1px solid #000;
-    pointer-events: none;
-    user-select: none;
-    white-space: pre;
-}
-
-#thundervim-status img {
-    display: block;
-    min-height: 18px;
-}
-
-#thundervim-status .tv-right {
-    margin-left: 16px;
-}
-
-#thundervim-status[data-mode="insert"] {
-    background: #2e7d32;
-    color: #ffffff;
-}
-#thundervim-status[data-mode="normal"] {
-    background: #202225;
-    color: #e6e6e6;
-}
-#thundervim-status[data-mode="visual"],
-#thundervim-status[data-mode="visual-line"] {
-    background: #6a1b9a;
-    color: #ffffff;
-}
-#thundervim-status[data-mode="off"] {
-    background: #4a4a4a;
-    color: #bdbdbd;
-}
-#thundervim-status[data-mode="search"] {
-    background: #202225;
-    color: #ffd54f;
-}
 
 /* Fake block cursor for Normal / Visual mode. `mix-blend-mode: difference`
  * inverts whatever is underneath, so it reads as a classic block cursor on top

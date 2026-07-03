@@ -853,74 +853,100 @@ function beforeSendCleanup(): void {
 // ----------------------------------------------------------- status bar
 
 function ensureBar(): HTMLElement {
-  // Remove shadow-host status bars from the previous attempt. Thunderbird's
-  // compose editor did not reliably paint the shadow contents.
-  document.getElementById("thundervim-status-host")?.remove();
-
-  let bar = document.getElementById("thundervim-status");
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.id = "thundervim-status";
-    bar.setAttribute("contenteditable", "false");
-    (document.documentElement || document.body).appendChild(bar);
+  // Remove status bars from older versions that lived in the light DOM. Even
+  // textless canvases there appear to be unsafe in Thunderbird's send encoder,
+  // and CSS/generated text definitely leaks into plain-text messages.
+  for (const old of Array.from(
+    document.querySelectorAll("#thundervim-status"),
+  )) {
+    old.remove();
   }
 
-  // Render the status labels as raster images, not DOM text, CSS generated
-  // text, or SVG <text>. Thunderbird's plain-text serializer extracts visible
-  // text from this compose document, but an <img alt=""> PNG has none to append
-  // to the outgoing mail.
-  if (
-    !(bar.querySelector(".tv-left") instanceof HTMLImageElement) ||
-    !(bar.querySelector(".tv-right") instanceof HTMLImageElement)
-  ) {
-    bar.replaceChildren();
-    const left = document.createElement("img");
+  let host = document.getElementById("thundervim-status-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "thundervim-status-host";
+    host.setAttribute("contenteditable", "false");
+    (document.documentElement || document.body).appendChild(host);
+  }
+
+  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+  let bar = shadow.getElementById("thundervim-status");
+  if (!bar) {
+    shadow.replaceChildren();
+    const style = document.createElement("style");
+    style.textContent = `
+      #thundervim-status {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2147483647;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 8px;
+        font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        letter-spacing: 0.02em;
+        color: #e6e6e6;
+        background: #202225;
+        border-top: 1px solid #000;
+        pointer-events: none;
+        user-select: none;
+        white-space: pre;
+      }
+      #thundervim-status canvas { display: block; }
+      #thundervim-status .tv-right { margin-left: 16px; }
+      #thundervim-status[data-mode="insert"] { background: #2e7d32; color: #fff; }
+      #thundervim-status[data-mode="normal"] { background: #202225; color: #e6e6e6; }
+      #thundervim-status[data-mode="visual"],
+      #thundervim-status[data-mode="visual-line"] { background: #6a1b9a; color: #fff; }
+      #thundervim-status[data-mode="off"] { background: #4a4a4a; color: #bdbdbd; }
+      #thundervim-status[data-mode="search"] { background: #202225; color: #ffd54f; }
+    `;
+    bar = document.createElement("div");
+    bar.id = "thundervim-status";
+    const left = document.createElement("canvas");
     left.className = "tv-left";
-    left.alt = "";
-    const right = document.createElement("img");
+    const right = document.createElement("canvas");
     right.className = "tv-right";
-    right.alt = "";
     bar.appendChild(left);
     bar.appendChild(right);
+    shadow.appendChild(style);
+    shadow.appendChild(bar);
   }
   return bar;
 }
-function rasterStatusImage(text: string, color: string, opacity = 1): string {
-  const font = `12px Menlo, Monaco, "DejaVu Sans Mono", monospace`;
+function drawStatusText(canvas: HTMLCanvasElement, text: string): void {
+  const bar = canvas.parentElement!;
+  const style = getComputedStyle(bar);
   const dpr = window.devicePixelRatio || 1;
-  const canvas = document.createElement("canvas");
+  const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
   const ctx = canvas.getContext("2d")!;
   ctx.font = font;
+  const width = Math.ceil(ctx.measureText(text || " ").width + 2);
+  const height = Math.ceil(parseFloat(style.lineHeight) || 18);
 
-  const width = Math.max(1, Math.ceil(ctx.measureText(text || " ").width + 2));
-  const height = 18;
-  canvas.width = Math.ceil(width * dpr);
-  canvas.height = Math.ceil(height * dpr);
+  canvas.width = Math.max(1, Math.ceil(width * dpr));
+  canvas.height = Math.max(1, Math.ceil(height * dpr));
   canvas.style.width = width + "px";
   canvas.style.height = height + "px";
 
   ctx.scale(dpr, dpr);
   ctx.font = font;
-  ctx.fillStyle = color;
-  ctx.globalAlpha = opacity;
+  ctx.fillStyle = style.color;
   ctx.textBaseline = "middle";
+  ctx.globalAlpha = canvas.classList.contains("tv-right") ? 0.85 : 1;
   ctx.fillText(text, 0, height / 2);
-  return canvas.toDataURL("image/png");
-}
-function setStatusImage(img: HTMLImageElement, text: string): void {
-  const bar = img.parentElement!;
-  const style = getComputedStyle(bar);
-  img.src = rasterStatusImage(
-    text,
-    style.color || "#e6e6e6",
-    img.classList.contains("tv-right") ? 0.85 : 1,
-  );
 }
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
   bar.setAttribute("data-mode", mode);
-  setStatusImage(bar.querySelector(".tv-left")!, leftText);
-  setStatusImage(bar.querySelector(".tv-right")!, rightText || "");
+  drawStatusText(bar.querySelector(".tv-left")!, leftText);
+  drawStatusText(bar.querySelector(".tv-right")!, rightText || "");
   render();
 }
 function modeLabel(): string {
@@ -1410,10 +1436,10 @@ async function init(): Promise<void> {
   document.addEventListener("selectionchange", updateRulerLive);
   // Last line of defense: remove all Thundervim chrome before Thunderbird
   // serializes the compose document for sending. If sending is canceled, the
-  // status bar is recreated shortly after. Avoid beforeunload/pagehide here:
-  // Thunderbird can fire those during normal compose frame lifecycle changes,
-  // which would hide the mode line while editing.
+  // status bar is recreated shortly after.
   window.addEventListener("compose-send-message", beforeSendCleanup, true);
+  window.addEventListener("beforeunload", removeChromeOverlays, true);
+  window.addEventListener("pagehide", removeChromeOverlays, true);
   // Keep the block cursor and selection aligned when the view moves without
   // a keystroke.
   window.addEventListener("scroll", render, true);
