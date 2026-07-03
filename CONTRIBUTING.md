@@ -7,19 +7,20 @@ architecture, local development, testing, and how releases are built.
 
 Thundervim is split into two pieces with a hard boundary between them:
 
-- **`src/engine.js` — a pure, DOM-free vim state machine.** It operates on a
-  plain `state` object (`text`, `cursor`, `mode`, registers, undo stack,
+- **`src/engine.ts` — a pure, DOM-free vim state machine.** It operates on a
+  plain `State` object (`text`, `cursor`, `mode`, registers, undo stack,
   pending operator, search state, …) and never touches the DOM. Every keystroke
   is `handleKey(state, event)`. Because it has no environment dependencies, it
   is fully unit-tested under `node --test` with zero Thunderbird involvement.
-- **`src/compose.js` — a thin adapter.** This is the only file that talks to the
+- **`src/compose.ts` — a thin adapter.** This is the only file that talks to the
   Thunderbird compose window: it reads the contenteditable body, forwards keys
   to the engine, and renders the engine's state back (buffer text, block cursor,
   highlights, status bar). All user-facing settings live in the `CONFIG` object
-  at the top.
+  at the top. It `import`s the engine directly; the two are bundled into one
+  content script at build time.
 
 Keeping logic in the engine (and out of the adapter) is the core design rule:
-if a change can be expressed as engine state, it belongs in `engine.js` with a
+if a change can be expressed as engine state, it belongs in `engine.ts` with a
 test, not in the adapter.
 
 ### Rendering: formatting-preserving diff writes
@@ -51,29 +52,33 @@ from `readBuffer()` on `Esc`.
 ```
 thundervim/
 ├── manifest.json              MV3 manifest; injects the compose script + CSS
-├── package.json               npm scripts (test, check, build)
+├── package.json               npm scripts (typecheck, test, check, build)
+├── tsconfig.json              strict TypeScript config
 ├── src/
-│   ├── engine.js              pure vim state machine (no DOM)
-│   ├── compose.js             compose-window adapter (DOM <-> engine)
+│   ├── engine.ts              pure vim state machine (no DOM)
+│   ├── compose.ts             compose-window adapter (DOM <-> engine)
 │   └── statusbar.css          status bar + block cursor styling
 ├── test/
-│   └── engine.test.js         node --test unit suite for the engine
+│   └── engine.test.ts         node --test unit suite for the engine
 ├── scripts/
-│   └── build.sh               packages the add-on into dist/*.xpi
-└── .github/workflows/         CI (test + package) and release automation
+│   └── build.js               bundles + packages the add-on into dist/
+└── .github/workflows/         CI (typecheck + test + package) and release
 ```
 
 ## Prerequisites
 
-- **Node.js 18+** (for `node --test`; no npm dependencies are installed).
+- **Node.js 24+** — the test suite runs `.ts` files directly via Node's native
+  type stripping, and the build uses esbuild.
 - **`zip`** on your PATH (used by the build script; preinstalled on macOS and
   most Linux distros).
+- Install dev dependencies once with `npm install` (TypeScript + esbuild).
 
 ## Development workflow
 
 ```sh
-npm run check   # node --check on both source files
-npm test        # runs the node:test engine suite
+npm run typecheck   # tsc --noEmit (strict)
+npm test            # runs the node:test engine suite on the .ts sources
+npm run check       # typecheck + test
 ```
 
 The engine suite covers motions, counts, operators, text objects, undo/redo
@@ -83,19 +88,19 @@ thing CI runs.
 
 ### Testing in Thunderbird
 
-The adapter (`src/compose.js`) can't be unit-tested, so verify it by loading the
-add-on:
+The adapter (`src/compose.ts`) can't be unit-tested, so verify it by building
+and loading the add-on:
 
-1. **Tools → Developer Tools → Debug Add-ons** (or `about:debugging`).
-2. **Load Temporary Add-on…** → select `manifest.json`.
-3. Open a plain-text compose window and exercise your change. Reload the add-on
-   from the same page after each edit.
-
-The browser console (from the Debug Add-ons page) surfaces any adapter errors.
+1. `npm run build` (or `npm run watch` to rebuild on every save).
+2. **Tools → Developer Tools → Debug Add-ons** (or `about:debugging`).
+3. **Load Temporary Add-on…** → select **`dist/thundervim/manifest.json`** (the
+   built, unpacked package — not the repo-root manifest).
+4. Open a compose window and exercise your change. With `npm run watch` running,
+   just click **Reload** on the Debug Add-ons page after each edit.
 
 ## Adding a command to the engine
 
-A few conventions worth knowing before you touch `engine.js`:
+A few conventions worth knowing before you touch `engine.ts`:
 
 - **Operators** live in `state.pending.op` and must be handled in *both*
   `applyOperator` (for motions) and `applyRange` (for text objects). Doubled
@@ -114,19 +119,21 @@ everywhere it's referenced.
 npm run build
 ```
 
-This produces `dist/thundervim-<version>.xpi` — a zip with `manifest.json` at
-the root and the `src/` files the extension loads, and nothing else (no tests
-or tooling). The `.xpi` is what you submit to
+This bundles `src/compose.ts` + `src/engine.ts` into a single content script and
+produces both a loadable, unpacked package at `dist/thundervim/` and
+`dist/thundervim-<version>.xpi` (a zip with `manifest.json` at the root plus the
+bundled `compose.js` and `statusbar.css`, and nothing else — no tests, TypeScript
+sources, or tooling). The `.xpi` is what you submit to
 [addons.thunderbird.net](https://addons.thunderbird.net) or load temporarily.
 
 ## Continuous integration
 
 - **`.github/workflows/ci.yml`** runs on every push to `main` and on pull
-  requests: `npm run check` and `npm test` across Node 18/20/22, then builds the
-  `.xpi` and uploads it as a build artifact.
+  requests (Node 24): `npm run typecheck`, `npm test`, then builds the `.xpi`
+  and uploads it as a build artifact.
 - **`.github/workflows/release.yml`** runs when a `v*` tag is pushed. It verifies
-  the tag matches `manifest.json`'s `version`, runs the tests, builds the
-  `.xpi`, and publishes a GitHub Release with the package attached.
+  the tag matches `manifest.json`'s `version`, type-checks, runs the tests,
+  builds the `.xpi`, and publishes a GitHub Release with the package attached.
 
 ## Cutting a release
 
@@ -146,6 +153,8 @@ or tooling). The `.xpi` is what you submit to
 
 ## Code style
 
-- Plain ES5-ish JavaScript, no build step, no runtime dependencies.
+- Idiomatic, strict TypeScript compiled with no emit checks (`tsc --noEmit`) and
+  bundled with esbuild. Source uses ES modules and erasable-only type syntax
+  (no `enum`/`namespace`) so Node can run the tests directly.
 - Match the surrounding style; keep the engine pure and the adapter thin.
 - Comment intent and non-obvious constraints, not the obvious.

@@ -5,15 +5,15 @@
   "description": "Vim keybindings for editing email in the Thunderbird compose window.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "thundervim@local",
+      "id": "thundervim@corrode.dev",
       "strict_min_version": "151.0"
     }
   },
   "permissions": ["compose"],
   "compose_scripts": [
     {
-      "js": ["src/engine.js", "src/compose.js"],
-      "css": ["src/statusbar.css"]
+      "js": ["compose.js"],
+      "css": ["statusbar.css"]
     }
   ]
 }

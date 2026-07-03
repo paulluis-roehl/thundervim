@@ -1,8 +1,8 @@
-"use strict";
-
-const test = require("node:test");
-const assert = require("node:assert");
-const vim = require("../src/engine.js");
+/// <reference types="node" />
+import test from "node:test";
+import assert from "node:assert";
+import * as vim from "../src/engine.ts";
+import type { State } from "../src/engine.ts";
 
 // ---- helpers ---------------------------------------------------------------
 
@@ -10,7 +10,7 @@ const vim = require("../src/engine.js");
 //   'a'         -> plain key 'a'
 //   '<Esc>'     -> Escape
 //   '<C-r>'     -> Ctrl-r
-function ev(spec) {
+function ev(spec: string): vim.KeyEvent {
   if (spec === "<Esc>") return { key: "Escape" };
   if (spec === "<CR>" || spec === "<Enter>") return { key: "Enter" };
   const m = /^<C-(.)>$/.exec(spec);
@@ -19,14 +19,14 @@ function ev(spec) {
 }
 
 // Feed a sequence of key specs. A plain string is treated as one key per char.
-function feed(state, seq) {
+function feed(state: State, seq: string | string[]): State {
   const specs = Array.isArray(seq) ? seq : seq.split("");
   for (const s of specs) vim.handleKey(state, ev(s));
   return state;
 }
 
 // Start a state already in Normal mode with the cursor at `cursor`.
-function normal(text, cursor = 0) {
+function normal(text: string, cursor = 0): State {
   const s = vim.createState(text, cursor);
   s.mode = vim.MODE.NORMAL;
   s.cursor = vim.clampNormal(text, cursor);
@@ -580,7 +580,7 @@ test("find works as a visual-mode motion", () => {
 
 // Simulate the adapter: while in Insert mode the native editor inserts `typed`
 // at the cursor; on Escape the adapter reports the typed text to the engine.
-function insertTyped(state, typed) {
+function insertTyped(state: State, typed: string): void {
   state.text =
     state.text.slice(0, state.cursor) + typed + state.text.slice(state.cursor);
   state.cursor += typed.length;

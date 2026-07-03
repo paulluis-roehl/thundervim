@@ -2,10 +2,18 @@
   "name": "thundervim",
   "version": "0.3.0",
   "private": true,
+  "type": "module",
   "description": "Vim keybindings for editing email in the Thunderbird compose window.",
   "scripts": {
-    "test": "node --test",
-    "check": "node --check src/engine.js && node --check src/compose.js",
-    "build": "sh scripts/build.sh"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "check": "npm run typecheck && npm run test",
+    "build": "node scripts/build.js",
+    "watch": "node scripts/build.js --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
   }
 }

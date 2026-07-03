@@ -6,31 +6,20 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Test (Node ${{ matrix.node-version }})
+  build:
+    name: Type-check, test, and package
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [18, 20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-      - name: Syntax check
-        run: npm run check
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
       - name: Unit tests
         run: npm test
-
-  package:
-    name: Build add-on package
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - name: Build .xpi
         run: npm run build
       - name: Upload artifact

@@ -105,17 +105,18 @@ leaves your machine.**
 ## Configuration
 
 Thundervim has no options screen yet. The tunables are constants at the top of
-`src/compose.js`. Edit them and reload the add-on:
+`src/compose.ts`. Edit them, then rebuild and reload the add-on (see
+[CONTRIBUTING.md](CONTRIBUTING.md)):
 
-```js
-var CONFIG = {
+```ts
+const CONFIG: Config = {
   enableOnStart: true,
-  defaultMode: 'insert',              // 'insert' | 'normal'
-  toggle: { ctrl: true, alt: true, key: 'v' },
-  insertEscapeSequence: '',           // e.g. 'jk'; '' = only <Esc> leaves Insert
+  defaultMode: "insert",              // 'insert' | 'normal'
+  toggle: { ctrl: true, alt: true, key: "v" },
+  insertEscapeSequence: "",           // e.g. 'jk'; '' = only <Esc> leaves Insert
   escapeTimeoutMs: 500,
   shiftWidth: 4,                      // spaces for >> / <<
-  textWidth: 72                       // wrap column for gq
+  textWidth: 72,                      // wrap column for gq
 };
 ```
 
