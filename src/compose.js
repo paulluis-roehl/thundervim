@@ -1070,19 +1070,59 @@
     var json = JSON.stringify(info, null, 2);
     if (typeof console !== "undefined" && console.log)
       console.log("thundervim dump", info);
-    var msg = "-- thundervim: dump copied to clipboard --";
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(json).then(null, function () {});
-      } else {
-        msg = "-- thundervim: clipboard unavailable (see console) --";
-      }
-    } catch (err) {
-      msg = "-- thundervim: clipboard failed (see console) --";
-    }
+    var ok = copyToClipboard(json);
+    var msg = ok
+      ? "-- thundervim: dump copied to clipboard --"
+      : "-- thundervim: copy failed (see console) --";
     setBar(msg, "", "normal");
     setTimeout(updateBar, 2500);
     return info;
+  }
+
+  // Copy text to the clipboard from within a user gesture. Thunderbird's
+  // content-script sandbox does not expose navigator.clipboard, so fall back to
+  // the legacy execCommand("copy") path via an off-screen textarea. That path
+  // only works while handling a real key/mouse event, which dumpState always is.
+  function copyToClipboard(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(null, function () {});
+        return true;
+      }
+    } catch (err) {
+      /* fall through to execCommand */
+    }
+    try {
+      var doc = document;
+      var ta = doc.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.left = "-1000px";
+      ta.style.opacity = "0";
+      (doc.body || doc.documentElement).appendChild(ta);
+      var sel = doc.getSelection ? doc.getSelection() : null;
+      var saved = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+      ta.focus();
+      ta.select();
+      var copied = false;
+      try {
+        copied = doc.execCommand("copy");
+      } catch (e2) {
+        copied = false;
+      }
+      (doc.body || doc.documentElement).removeChild(ta);
+      // Restore the caret/selection we clobbered by focusing the textarea.
+      if (sel) {
+        sel.removeAllRanges();
+        if (saved) sel.addRange(saved);
+      }
+      if (doc.body && doc.body.focus) doc.body.focus();
+      return copied;
+    } catch (err2) {
+      return false;
+    }
   }
   if (typeof window !== "undefined") window.thundervim_dump = dumpState;
 
