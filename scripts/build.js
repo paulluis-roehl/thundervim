@@ -1,6 +1,6 @@
 // Build the Thundervim add-on package.
 //
-// Bundles the TypeScript source into a single compose content script, lays out
+// Bundles the TypeScript sources into extension scripts, lays out
 // a loadable extension directory (dist/thundervim/), and zips it into an
 // installable .xpi. Pass --watch to rebuild on change (for `Reload` during
 // development); the unpacked dist/thundervim/ dir is what you load in
@@ -29,6 +29,14 @@ async function copyAssets() {
     path.join(root, "src", "statusbar.css"),
     path.join(pkgDir, "statusbar.css"),
   );
+  await copyFile(
+    path.join(root, "src", "options.html"),
+    path.join(pkgDir, "options.html"),
+  );
+  await copyFile(
+    path.join(root, "src", "options.css"),
+    path.join(pkgDir, "options.css"),
+  );
 
   const iconsDir = path.join(pkgDir, "assets", "icons");
   await mkdir(iconsDir, { recursive: true });
@@ -41,11 +49,15 @@ async function copyAssets() {
 }
 
 const options = {
-  entryPoints: [path.join(root, "src", "compose.ts")],
+  entryPoints: {
+    compose: path.join(root, "src", "compose.ts"),
+    options: path.join(root, "src", "options.ts"),
+  },
   bundle: true,
   format: "iife",
   target: ["firefox115"],
-  outfile: path.join(pkgDir, "compose.js"),
+  outdir: pkgDir,
+  entryNames: "[name]",
   legalComments: "none",
   logLevel: "info",
 };
@@ -65,7 +77,18 @@ if (watch) {
   const xpi = path.join(root, "dist", `thundervim-${version}.xpi`);
   execFileSync(
     "zip",
-    ["-r", "-X", xpi, "manifest.json", "compose.js", "statusbar.css", "assets"],
+    [
+      "-r",
+      "-X",
+      xpi,
+      "manifest.json",
+      "compose.js",
+      "statusbar.css",
+      "options.html",
+      "options.css",
+      "options.js",
+      "assets",
+    ],
     { cwd: pkgDir, stdio: "ignore" },
   );
   console.log(`Built ${path.relative(root, xpi)}`);

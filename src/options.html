@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head></head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title></title>Thundervim Options</title>
+    <link rel="stylesheet" href="options.css">
+    <script src="options.js" defer></script>
+  </head>
+  <body></body>
+    <main></main>
+      <header class="hero">
+        <img src="assets/icons/icon-96.png" alt="" width="64" height="64">
+        <div></div>
+          <h1></h1>Thundervim</h1>
+          <p></p>Vim keybindings for Thunderbird compose windows.</p>
+        </div>
+      </header>
+
+      <form id="options-form">
+        <section></section>
+          <h2></h2>Startup</h2>
+          <label class="row checkbox">
+            <input id="enable-on-start" type="checkbox">
+            <span></span>Enable Thundervim when a compose window opens</span>
+          </label>
+
+          <label class="row">
+            <span></span>Default mode</span>
+            <select id="default-mode">
+              <option value="insert">Insert</option>
+              <option value="normal">Normal</option>
+            </select>
+          </label>
+        </section>
+
+        <section>
+</section>          <h2></h2>Toggle shortcut</h2>
+          <p class="hint">The toggle works even while Thundervim is disabled.</p>
+          <div class="chord" role="group" aria-label="Toggle shortcut">
+            <label><input id="toggle-ctrl" type="checkbox"> Ctrl</label>
+            <label><input id="toggle-alt" type="checkbox"> Alt / Option</label>
+            <label><input id="toggle-shift" type="checkbox"> Shift</label>
+            <label class="key-field">
+              Key
+              <input id="toggle-key" type="text" maxlength="1" autocomplete="off" spellcheck="false">
+            </label>
+          </div>
+        </section>
+
+        <section>
+          <h2></section></h2>Insert mode</h2>
+          <label class="row">
+            <span>Escape sequence</span>
+</span>            <input id="insert-escape-sequence" type="text" maxlength="2" autocomplete="off" spellcheck="false" placeholder="jk">
+          </label>
+          <p class="hint">Leave empty to use only <kbd></kbd>Esc</kbd>. If set, it must be exactly two characters.</p>
+
+          <label class="row">
+            <span></span>Escape timeout</span>
+            <input id="escape-timeout-ms" type="number" min="100" max="5000" step="50">
+          </label>
+        </section>
+
+        <section></section>
+          <h2></h2>Editing</h2>
+          <label class="row">
+            <span></span>Shift width</span>
+            <input id="shift-width" type="number" min="1" max="16" step="1">
+          </label>
+
+          <label class="row">
+            <span></span>Text width for <code>g</code>q</code></span>
+            <input id="text-width" type="number" min="20" max="200" step="1">
+          </label>
+        </section>
+
+        <footer></footer>
+          <button type="submit">Save</button>
+          <button id="reset" type="button">Reset to defaults</button>
+          <output id="status" role="status" aria-live="polite"></output>
+        </footer>
+      </form>
+    </main>
+  </body>
+</html>

@@ -15,9 +15,12 @@ Thundervim is split into two pieces with a hard boundary between them:
 - **`src/compose.ts` — a thin adapter.** This is the only file that talks to the
   Thunderbird compose window: it reads the contenteditable body, forwards keys
   to the engine, and renders the engine's state back (buffer text, block cursor,
-  highlights, status bar). All user-facing settings live in the `CONFIG` object
-  at the top. It `import`s the engine directly; the two are bundled into one
-  content script at build time.
+  highlights, status bar). It loads user-facing settings from `storage.local`
+  through `src/config.ts`. It `import`s the engine directly; the two are bundled
+  into one content script at build time.
+- **`src/options.ts` / `src/options.html` — the Thunderbird preferences page.** It
+  edits the shared config stored by `src/config.ts`; compose windows read those
+  settings when they open.
 
 Keeping logic in the engine (and out of the adapter) is the core design rule:
 if a change can be expressed as engine state, it belongs in `engine.ts` with a
@@ -61,6 +64,10 @@ thundervim/
 ├── src/
 │   ├── engine.ts              pure vim state machine (no DOM)
 │   ├── compose.ts             compose-window adapter (DOM <-> engine)
+│   ├── config.ts              shared defaults + storage helpers
+│   ├── options.ts             preferences page logic
+│   ├── options.html           preferences page markup
+│   ├── options.css            preferences page styling
 │   └── statusbar.css          status bar + block cursor styling
 ├── test/
 │   └── engine.test.ts         node --test unit suite for the engine
@@ -123,11 +130,12 @@ everywhere it's referenced.
 npm run build
 ```
 
-This bundles `src/compose.ts` + `src/engine.ts` into a single content script and
-produces both a loadable, unpacked package at `dist/thundervim/` and
+This bundles `src/compose.ts` + `src/engine.ts` into the compose content script,
+bundles `src/options.ts` into the preferences script, and produces both a
+loadable, unpacked package at `dist/thundervim/` and
 `dist/thundervim-<version>.xpi` (a zip with `manifest.json` at the root plus the
-bundled `compose.js`, `statusbar.css`, and packaged icons under `assets/icons/`;
-no tests, TypeScript sources, or tooling). The `.xpi` is what you submit to
+bundled scripts, CSS, options page, and packaged icons under `assets/icons/`; no
+tests, TypeScript sources, or tooling). The `.xpi` is what you submit to
 [addons.thunderbird.net](https://addons.thunderbird.net) or load temporarily.
 
 ## Continuous integration

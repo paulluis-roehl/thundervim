@@ -14,11 +14,14 @@
       "strict_min_version": "151.0"
     }
   },
-  "permissions": ["compose"],
+  "permissions": ["compose", "storage"],
   "compose_scripts": [
     {
       "js": ["compose.js"],
       "css": ["statusbar.css"]
     }
-  ]
+  ],
+  "options_ui": {
+    "page": "options.html"
+  }
 }

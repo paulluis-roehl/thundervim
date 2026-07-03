@@ -24,7 +24,9 @@ import {
   lineStartAt,
   lineEndAt,
 } from "./engine.ts";
+import { DEFAULT_CONFIG, loadConfig } from "./config.ts";
 import type { State, Mode, SearchInfo } from "./engine.ts";
+import type { ThundervimConfig } from "./config.ts";
 
 // Diagnostic hook exposed on the window for manual bug reports (Ctrl-Alt-D).
 declare global {
@@ -34,32 +36,13 @@ declare global {
 }
 
 // ------------------------------------------------------------------ config
-interface Config {
-  enableOnStart: boolean;
-  defaultMode: "insert" | "normal";
-  toggle: { ctrl?: boolean; alt?: boolean; shift?: boolean; key: string };
-  insertEscapeSequence: string;
-  escapeTimeoutMs: number;
-  shiftWidth: number;
-  textWidth: number;
-}
+let config: ThundervimConfig = DEFAULT_CONFIG;
 
-const CONFIG: Config = {
-  enableOnStart: true,
-  defaultMode: "insert", // 'insert' | 'normal'
-  // Toggle Thundervim on/off for this window. Checked before anything else.
-  toggle: { ctrl: true, alt: true, key: "v" },
-  // Type these two keys quickly in Insert mode to act as <Esc>. Empty ('')
-  // disables it, matching vanilla vim where only <Esc> leaves Insert mode.
-  // Set e.g. to "jk" if you want the classic escape-sequence convenience and
-  // the window-level Escape binding proves unreliable.
-  insertEscapeSequence: "",
-  escapeTimeoutMs: 500,
-  // Spaces inserted/removed by >> and << (and >{motion} etc.).
-  shiftWidth: 4,
-  // Column at which gq wraps paragraphs (mirrors mailnews.wraplength).
-  textWidth: 72,
-};
+function applyConfig(next: ThundervimConfig): void {
+  config = next;
+  state.shiftwidth = config.shiftWidth;
+  state.textwidth = config.textWidth;
+}
 
 // The adapter's normalized key event: a structural superset of the engine's
 // KeyEvent (it also carries `code`, used by the macOS debug chord).
@@ -73,10 +56,10 @@ interface NormKey {
 }
 
 const state: State = createState("", 0);
-state.shiftwidth = CONFIG.shiftWidth;
-state.textwidth = CONFIG.textWidth;
-state.mode = CONFIG.defaultMode === "normal" ? MODE.NORMAL : MODE.INSERT;
-let enabled = CONFIG.enableOnStart;
+state.shiftwidth = config.shiftWidth;
+state.textwidth = config.textWidth;
+state.mode = config.defaultMode === "normal" ? MODE.NORMAL : MODE.INSERT;
+let enabled = config.enableOnStart;
 let lastInsert: { key: string | null; time: number } = { key: null, time: 0 };
 // Snapshot of the buffer at the moment Insert mode is entered from a command,
 // used to recover the typed text for dot-repeat when Insert mode exits.
@@ -1012,7 +995,7 @@ function onInputEvent(e: Event): void {
   if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 }
 function isToggle(ev: NormKey): boolean {
-  const t = CONFIG.toggle;
+  const t = config.toggle;
   return (
     !!t.ctrl === ev.ctrl &&
     !!t.alt === ev.alt &&
@@ -1048,7 +1031,7 @@ function finalizeInsert(finalText: string): void {
 // Handle the "jk" style escape sequence while in Insert mode. Returns true if
 // the event was consumed.
 function handleInsertEscape(e: KeyboardEvent, ev: NormKey): boolean {
-  const seq = CONFIG.insertEscapeSequence;
+  const seq = config.insertEscapeSequence;
   if (!seq || seq.length !== 2) return false;
   if (ev.ctrl || ev.alt || ev.meta || ev.key.length !== 1) {
     lastInsert = { key: null, time: 0 };
@@ -1058,7 +1041,7 @@ function handleInsertEscape(e: KeyboardEvent, ev: NormKey): boolean {
   if (
     ev.key === seq[1] &&
     lastInsert.key === seq[0] &&
-    now - lastInsert.time < CONFIG.escapeTimeoutMs
+    now - lastInsert.time < config.escapeTimeoutMs
   ) {
     // The first key (seq[0]) was already typed natively; remove it, then exit.
     swallow(e);
@@ -1349,7 +1332,10 @@ function showDumpOverlay(text: string): void {
 }
 if (typeof window !== "undefined") window.thundervim_dump = dumpState;
 
-function init(): void {
+async function init(): Promise<void> {
+  applyConfig(await loadConfig());
+  state.mode = config.defaultMode === "normal" ? MODE.NORMAL : MODE.INSERT;
+  enabled = config.enableOnStart;
   ensurePreWrap();
   document.addEventListener("keydown", onKeydown, true);
   document.addEventListener("keypress", onInputEvent, true);

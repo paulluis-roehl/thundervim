@@ -1,3 +1,5 @@
+![Thundervim logo](assets/icons/icon-128.png)
+
 # Thundervim
 
 Vim keybindings for editing email in Thunderbird's compose window.
@@ -33,8 +35,8 @@ You can load the add-on without signing; it stays until you restart Thunderbird.
    [CONTRIBUTING.md](CONTRIBUTING.md)).
 2. In Thunderbird: **Tools → Developer Tools → Debug Add-ons**
    (or open `about:debugging#/runtime/this-firefox`).
-3. Click **Load Temporary Add-on…** and select the `.xpi` (or this project's
-   `manifest.json`).
+3. Click **Load Temporary Add-on…** and select the `.xpi`. For local
+   development, build first and select `dist/thundervim/manifest.json`.
 4. Open a plain-text compose window and start editing.
 
 Permanent installation of an unsigned build is only possible on
@@ -104,25 +106,18 @@ leaves your machine.**
 
 ## Configuration
 
-Thundervim has no options screen yet. The tunables are constants at the top of
-`src/compose.ts`. Edit them, then rebuild and reload the add-on (see
-[CONTRIBUTING.md](CONTRIBUTING.md)):
+Open **Add-ons and Themes → Extensions → Thundervim → Preferences** to configure:
 
-```ts
-const CONFIG: Config = {
-  enableOnStart: true,
-  defaultMode: "insert",              // 'insert' | 'normal'
-  toggle: { ctrl: true, alt: true, key: "v" },
-  insertEscapeSequence: "",           // e.g. 'jk'; '' = only <Esc> leaves Insert
-  escapeTimeoutMs: 500,
-  shiftWidth: 4,                      // spaces for >> / <<
-  textWidth: 72,                      // wrap column for gq
-};
-```
+- whether Thundervim starts enabled in new compose windows;
+- the default mode (`Insert` or `Normal`);
+- the enable/disable toggle chord;
+- an optional two-key Insert-mode escape sequence like `jk`;
+- the escape-sequence timeout;
+- shift width for `>>` / `<<`;
+- text width for `gq` reflow.
 
-`insertEscapeSequence` is off by default (matching vanilla vim, where only
-`Esc` leaves Insert mode). Set it to a two-key pair like `'jk'` if you want the
-classic escape shortcut as a fallback.
+The escape sequence is off by default, matching vanilla vim where only `Esc`
+leaves Insert mode. Saved settings apply to newly opened compose windows.
 
 ## Limitations
 
