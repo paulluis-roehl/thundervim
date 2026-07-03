@@ -216,6 +216,71 @@
     }
   }
 
+  // Nearest ancestor block element (stops at body). Text nodes resolve to their
+  // parent's block. Returns null if the node lives directly under body with no
+  // block wrapper.
+  function nearestBlock(node) {
+    var n = node && node.nodeType === 3 ? node.parentNode : node;
+    while (n && n !== document.body) {
+      if (n.nodeType === 1 && BLOCK[n.tagName]) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+
+  // The block element immediately following `block`, skipping only whitespace
+  // text nodes and <br> separators. Returns null if the next meaningful node is
+  // not a block (so we never guess across real content).
+  function nextMergeableBlock(block) {
+    var n = block.nextSibling;
+    while (n) {
+      if (n.nodeType === 1 && BLOCK[n.tagName]) return n;
+      if (n.nodeType === 3 && n.data.replace(/\s/g, "") === "") {
+        n = n.nextSibling;
+        continue;
+      }
+      if (n.nodeType === 1 && n.tagName === "BR") {
+        n = n.nextSibling;
+        continue;
+      }
+      return null;
+    }
+    return null;
+  }
+
+  // After a cross-boundary edit (e.g. J), the model may have removed a block-
+  // separating newline while the DOM still holds two adjacent block elements, so
+  // readBuffer keeps emitting a synthetic newline there. Repair by merging the
+  // block at each mismatch into the following one until the DOM matches newText.
+  // This keeps rich siblings (quotes, signatures) intact instead of falling back
+  // to the destructive flat rewrite. Returns true once the DOM matches.
+  function repairBlockBoundaries(newText) {
+    for (var guard = 0; guard < 500; guard++) {
+      var chk = readBuffer();
+      if (!chk) return false;
+      if (chk.text === newText) return true;
+      var diff = commonPrefixLen(chk.text, newText);
+      var pt = domPointAt(diff);
+      if (!pt || pt.br) return false;
+      var lead = nearestBlock(pt.node);
+      if (!lead) return false;
+      var next = nextMergeableBlock(lead);
+      if (!next) return false;
+      // Drop the whitespace/<br> separators between the two blocks, move the
+      // trailing block's children onto the leading block, then remove it.
+      var sib = lead.nextSibling;
+      while (sib && sib !== next) {
+        var gone = sib;
+        sib = sib.nextSibling;
+        gone.parentNode.removeChild(gone);
+      }
+      while (next.firstChild) lead.appendChild(next.firstChild);
+      if (next.parentNode) next.parentNode.removeChild(next);
+      lead.normalize();
+    }
+    return false;
+  }
+
   // Bring the DOM in line with `newText` by applying only the changed span, so
   // untouched markup (quote levels, bold, links, ...) is preserved. Falls back
   // to a full flat rewrite only if a general edit can't reproduce newText.
@@ -250,10 +315,16 @@
     }
 
     // General path: cross-boundary edit. Verify it reproduced newText exactly;
-    // if not, fall back to the flat writer (loses formatting, but stays correct).
+    // if not, first try to repair a stranded block boundary (a join that merged
+    // two blocks in the model but not the DOM). Only if that fails do we fall
+    // back to the flat writer (loses formatting, but stays correct).
     if (generalReplace(p, qOld, repl)) {
       var check = readBuffer();
       if (check && check.text === newText) {
+        if (placeCaret) setNativeCaret(caret);
+        return;
+      }
+      if (repairBlockBoundaries(newText)) {
         if (placeCaret) setNativeCaret(caret);
         return;
       }
