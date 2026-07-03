@@ -865,9 +865,10 @@ function ensureBar(): HTMLElement {
     (document.documentElement || document.body).appendChild(bar);
   }
 
-  // Render the status labels as images, not DOM text or CSS generated text.
-  // Thunderbird's plain-text serializer extracts visible text from this compose
-  // document, but an <img alt=""> has no text to append to the outgoing mail.
+  // Render the status labels as raster images, not DOM text, CSS generated
+  // text, or SVG <text>. Thunderbird's plain-text serializer extracts visible
+  // text from this compose document, but an <img alt=""> PNG has none to append
+  // to the outgoing mail.
   if (
     !(bar.querySelector(".tv-left") instanceof HTMLImageElement) ||
     !(bar.querySelector(".tv-right") instanceof HTMLImageElement)
@@ -884,25 +885,32 @@ function ensureBar(): HTMLElement {
   }
   return bar;
 }
-function svgStatusImage(text: string, color: string, opacity = 1): string {
+function rasterStatusImage(text: string, color: string, opacity = 1): string {
   const font = `12px Menlo, Monaco, "DejaVu Sans Mono", monospace`;
+  const dpr = window.devicePixelRatio || 1;
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d")!;
   ctx.font = font;
+
   const width = Math.max(1, Math.ceil(ctx.measureText(text || " ").width + 2));
   const height = 18;
-  const escaped = text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><text x="0" y="9" dominant-baseline="middle" font-family="Menlo, Monaco, DejaVu Sans Mono, monospace" font-size="12" fill="${color}" fill-opacity="${opacity}">${escaped}</text></svg>`;
-  return "data:image/svg+xml," + encodeURIComponent(svg);
+  canvas.width = Math.ceil(width * dpr);
+  canvas.height = Math.ceil(height * dpr);
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+
+  ctx.scale(dpr, dpr);
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = opacity;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, height / 2);
+  return canvas.toDataURL("image/png");
 }
 function setStatusImage(img: HTMLImageElement, text: string): void {
   const bar = img.parentElement!;
   const style = getComputedStyle(bar);
-  img.src = svgStatusImage(
+  img.src = rasterStatusImage(
     text,
     style.color || "#e6e6e6",
     img.classList.contains("tv-right") ? 0.85 : 1,

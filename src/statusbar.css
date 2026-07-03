@@ -1,8 +1,8 @@
 /* Thundervim overlays.
  *
  * The mode status bar is visible while editing, but its labels are rendered as
- * textless <img alt=""> data URLs so Thunderbird's plain-text serializer has no
- * DOM/CSS text to append to sent mail.
+ * textless <img alt=""> PNG data URLs so Thunderbird's plain-text serializer has
+ * no DOM/CSS/SVG text to append to sent mail.
  */
 
 #thundervim-status {
