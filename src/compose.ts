@@ -846,15 +846,25 @@ function ensureBar(): HTMLElement {
     bar.appendChild(left);
     bar.appendChild(right);
   }
+  // Live add-on reloads can leave a status bar created by an older version that
+  // stored visible text in real text nodes. Remove any such stale text so the
+  // plain-text send serializer has nothing to emit.
+  for (const node of Array.from(bar.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) node.remove();
+  }
   return bar;
+}
+function setGeneratedText(el: Element, text: string): void {
+  el.textContent = "";
+  el.setAttribute("data-text", text);
 }
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
   // Store the text in data-* attributes and render it via CSS generated
   // content (see statusbar.css). Using real text nodes here would leak the
   // status line into plain-text sends, which serialize the whole document.
-  bar.querySelector(".tv-left")!.setAttribute("data-text", leftText);
-  bar.querySelector(".tv-right")!.setAttribute("data-text", rightText || "");
+  setGeneratedText(bar.querySelector(".tv-left")!, leftText);
+  setGeneratedText(bar.querySelector(".tv-right")!, rightText || "");
   bar.setAttribute("data-mode", mode);
   render();
 }
