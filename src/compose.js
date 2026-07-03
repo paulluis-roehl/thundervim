@@ -228,57 +228,119 @@
     return null;
   }
 
-  // The block element immediately following `block`, skipping only whitespace
-  // text nodes and <br> separators. Returns null if the next meaningful node is
-  // not a block (so we never guess across real content).
-  function nextMergeableBlock(block) {
-    var n = block.nextSibling;
-    while (n) {
-      if (n.nodeType === 1 && BLOCK[n.tagName]) return n;
-      if (n.nodeType === 3 && n.data.replace(/\s/g, "") === "") {
-        n = n.nextSibling;
-        continue;
-      }
-      if (n.nodeType === 1 && n.tagName === "BR") {
-        n = n.nextSibling;
-        continue;
-      }
-      return null;
-    }
-    return null;
+  // True if the changed span [p, qOld) crosses a block boundary, i.e. the block
+  // holding the last unchanged char before the edit differs from the one holding
+  // the first unchanged char after it. A stray body-level node (whitespace, an
+  // inserted separator) resolves to a null block, which also counts as crossing.
+  function editCrossesBlock(p, qOld, oldLen) {
+    var pa = domPointAt(p > 0 ? p - 1 : 0);
+    var pb = domPointAt(qOld < oldLen ? qOld : oldLen);
+    var ba = pa ? nearestBlock(pa.node) : null;
+    var bb = pb ? nearestBlock(pb.node) : null;
+    return ba !== bb;
   }
 
-  // After a cross-boundary edit (e.g. J), the model may have removed a block-
-  // separating newline while the DOM still holds two adjacent block elements, so
-  // readBuffer keeps emitting a synthetic newline there. Repair by merging the
-  // block at each mismatch into the following one until the DOM matches newText.
-  // This keeps rich siblings (quotes, signatures) intact instead of falling back
-  // to the destructive flat rewrite. Returns true once the DOM matches.
-  function repairBlockBoundaries(newText) {
-    for (var guard = 0; guard < 500; guard++) {
-      var chk = readBuffer();
-      if (!chk) return false;
-      if (chk.text === newText) return true;
-      var diff = commonPrefixLen(chk.text, newText);
-      var pt = domPointAt(diff);
-      if (!pt || pt.br) return false;
-      var lead = nearestBlock(pt.node);
-      if (!lead) return false;
-      var next = nextMergeableBlock(lead);
-      if (!next) return false;
-      // Drop the whitespace/<br> separators between the two blocks, move the
-      // trailing block's children onto the leading block, then remove it.
-      var sib = lead.nextSibling;
-      while (sib && sib !== next) {
-        var gone = sib;
-        sib = sib.nextSibling;
-        gone.parentNode.removeChild(gone);
-      }
-      while (next.firstChild) lead.appendChild(next.firstChild);
-      if (next.parentNode) next.parentNode.removeChild(next);
-      lead.normalize();
+  // Linear [start, end) span of every direct child of body, serialized exactly
+  // like readBuffer (synthetic block-boundary newlines included; status/cursor/
+  // highlight overlays and the bogus trailing <br> excluded). Lets a structural
+  // edit target just the touched top-level blocks instead of the whole body.
+  function topLevelSpans() {
+    var body = document.body;
+    if (!body) return null;
+    var acc = 0;
+    var lastCh = "";
+    function isOverlay(node) {
+      return (
+        node.nodeType === 1 &&
+        (node.id === "thundervim-status" ||
+          node.id === "thundervim-cursor" ||
+          node.id === "thundervim-highlights")
+      );
     }
-    return false;
+    function measure(node) {
+      if (node.nodeType === 3) {
+        acc += node.data.length;
+        if (node.data.length) lastCh = node.data.charAt(node.data.length - 1);
+        return;
+      }
+      if (node.nodeType !== 1 || isOverlay(node)) return;
+      if (node.tagName === "BR") {
+        if (isBogusTrailingBr(node)) return;
+        acc += 1;
+        lastCh = "\n";
+        return;
+      }
+      if (BLOCK[node.tagName] && acc > 0 && lastCh !== "\n") {
+        acc += 1;
+        lastCh = "\n";
+      }
+      var ch = node.childNodes;
+      for (var i = 0; i < ch.length; i++) measure(ch[i]);
+    }
+    var spans = [];
+    var kids = body.childNodes;
+    for (var i = 0; i < kids.length; i++) {
+      var node = kids[i];
+      var over = isOverlay(node);
+      var s = acc;
+      measure(node);
+      if (!over) spans.push({ node: node, start: s, end: acc });
+    }
+    return spans;
+  }
+
+  // Index of the span whose [start, end) contains offset o, else the last span
+  // starting at or before o.
+  function childIndexContaining(spans, o) {
+    var best = -1;
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].start <= o && o < spans[i].end) return i;
+      if (spans[i].start <= o) best = i;
+    }
+    return best;
+  }
+
+  // Structural edit that re-renders only the top-level blocks the change spans,
+  // replacing them with a single pre-wrap <div> of the corresponding slice of
+  // newText. Sibling nodes (quoted reply, signature blocks below) are untouched,
+  // so a cross-block join no longer flattens the whole body. Returns true once
+  // the DOM matches newText.
+  function scopedRewrite(oldText, newText, p, qOld, caret, placeCaret) {
+    var body = document.body;
+    if (!body) return false;
+    var spans = topLevelSpans();
+    if (!spans || !spans.length) return false;
+    var i0 = childIndexContaining(spans, p > 0 ? p - 1 : p);
+    var lastOld = oldText.length > 0 ? oldText.length - 1 : 0;
+    var i1 = childIndexContaining(
+      spans,
+      qOld < oldText.length ? qOld : lastOld,
+    );
+    if (i0 < 0 || i1 < 0 || i1 < i0) return false;
+    var startOff = spans[i0].start;
+    var endOff = spans[i1].end;
+    var newEndOff = endOff + (newText.length - oldText.length);
+    if (newEndOff < startOff) return false;
+    var slice = newText.slice(startOff, newEndOff);
+    var parent = spans[i0].node.parentNode;
+    var stop = spans[i1].node.nextSibling;
+    var anchor = spans[i0].node;
+    if (slice.length > 0) {
+      var div = document.createElement("div");
+      div.style.whiteSpace = "pre-wrap";
+      div.appendChild(document.createTextNode(slice));
+      parent.insertBefore(div, anchor);
+    }
+    var cur = anchor;
+    while (cur && cur !== stop) {
+      var next = cur.nextSibling;
+      parent.removeChild(cur);
+      cur = next;
+    }
+    var chk = readBuffer();
+    if (!chk || chk.text !== newText) return false;
+    if (placeCaret) setNativeCaret(caret);
+    return true;
   }
 
   // Bring the DOM in line with `newText` by applying only the changed span, so
@@ -314,20 +376,25 @@
       return;
     }
 
-    // General path: cross-boundary edit. Verify it reproduced newText exactly;
-    // if not, first try to repair a stranded block boundary (a join that merged
-    // two blocks in the model but not the DOM). Only if that fails do we fall
-    // back to the flat writer (loses formatting, but stays correct).
-    if (generalReplace(p, qOld, repl)) {
+    // A cross-block edit (e.g. J joining two <p>) can't be spliced: deleting
+    // across the boundary strands two blocks and leaves a synthetic newline that
+    // no longer matches the model. Re-render just the affected top-level blocks,
+    // leaving quoted-reply and other siblings intact. Decide before mutating the
+    // DOM so scopedRewrite reads a clean tree.
+    if (editCrossesBlock(p, qOld, oldText.length)) {
+      if (scopedRewrite(oldText, newText, p, qOld, caret, placeCaret)) return;
+    } else if (generalReplace(p, qOld, repl)) {
+      // Within-block cross-boundary edit (e.g. spanning a <br> or inline tag).
+      // The range surgery preserves surrounding formatting when it reproduces
+      // newText exactly.
       var check = readBuffer();
       if (check && check.text === newText) {
         if (placeCaret) setNativeCaret(caret);
         return;
       }
-      if (repairBlockBoundaries(newText)) {
-        if (placeCaret) setNativeCaret(caret);
-        return;
-      }
+      // The splice didn't reproduce newText; try the scoped re-render before the
+      // last-resort flat writer.
+      if (scopedRewrite(oldText, newText, p, qOld, caret, placeCaret)) return;
     }
     if (typeof console !== "undefined" && console.warn) {
       console.warn(
