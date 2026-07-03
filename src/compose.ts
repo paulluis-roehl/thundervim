@@ -35,6 +35,16 @@ declare global {
   }
 }
 
+interface RuntimeApi {
+  sendMessage(message: unknown): Promise<unknown>;
+}
+
+interface BrowserApi {
+  runtime?: RuntimeApi;
+}
+
+declare const browser: BrowserApi | undefined;
+
 // ------------------------------------------------------------------ config
 let config: ThundervimConfig = DEFAULT_CONFIG;
 
@@ -850,103 +860,31 @@ function beforeSendCleanup(): void {
   }, 1000);
 }
 
-// ----------------------------------------------------------- status bar
+// ----------------------------------------------------------- mode indicator
 
-function ensureBar(): HTMLElement {
-  // Remove status bars from older versions that lived in the light DOM. Even
-  // textless canvases there appear to be unsafe in Thunderbird's send encoder,
-  // and CSS/generated text definitely leaks into plain-text messages.
-  for (const old of Array.from(
-    document.querySelectorAll("#thundervim-status"),
-  )) {
-    old.remove();
-  }
-
-  let host = document.getElementById("thundervim-status-host");
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "thundervim-status-host";
-    host.setAttribute("contenteditable", "false");
-    (document.documentElement || document.body).appendChild(host);
-  }
-
-  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-  let bar = shadow.getElementById("thundervim-status");
-  if (!bar) {
-    shadow.replaceChildren();
-    const style = document.createElement("style");
-    style.textContent = `
-      #thundervim-status {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 2147483647;
-        box-sizing: border-box;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 2px 8px;
-        font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        letter-spacing: 0.02em;
-        color: #e6e6e6;
-        background: #202225;
-        border-top: 1px solid #000;
-        pointer-events: none;
-        user-select: none;
-        white-space: pre;
-      }
-      #thundervim-status canvas { display: block; }
-      #thundervim-status .tv-right { margin-left: 16px; }
-      #thundervim-status[data-mode="insert"] { background: #2e7d32; color: #fff; }
-      #thundervim-status[data-mode="normal"] { background: #202225; color: #e6e6e6; }
-      #thundervim-status[data-mode="visual"],
-      #thundervim-status[data-mode="visual-line"] { background: #6a1b9a; color: #fff; }
-      #thundervim-status[data-mode="off"] { background: #4a4a4a; color: #bdbdbd; }
-      #thundervim-status[data-mode="search"] { background: #202225; color: #ffd54f; }
-    `;
-    bar = document.createElement("div");
-    bar.id = "thundervim-status";
-    const left = document.createElement("canvas");
-    left.className = "tv-left";
-    const right = document.createElement("canvas");
-    right.className = "tv-right";
-    bar.appendChild(left);
-    bar.appendChild(right);
-    shadow.appendChild(style);
-    shadow.appendChild(bar);
-  }
-  return bar;
+function clearLegacyStatusBars(): void {
+  document.getElementById("thundervim-status")?.remove();
+  document.getElementById("thundervim-status-host")?.remove();
 }
-function drawStatusText(canvas: HTMLCanvasElement, text: string): void {
-  const bar = canvas.parentElement!;
-  const style = getComputedStyle(bar);
-  const dpr = window.devicePixelRatio || 1;
-  const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = font;
-  const width = Math.ceil(ctx.measureText(text || " ").width + 2);
-  const height = Math.ceil(parseFloat(style.lineHeight) || 18);
 
-  canvas.width = Math.max(1, Math.ceil(width * dpr));
-  canvas.height = Math.max(1, Math.ceil(height * dpr));
-  canvas.style.width = width + "px";
-  canvas.style.height = height + "px";
-
-  ctx.scale(dpr, dpr);
-  ctx.font = font;
-  ctx.fillStyle = style.color;
-  ctx.textBaseline = "middle";
-  ctx.globalAlpha = canvas.classList.contains("tv-right") ? 0.85 : 1;
-  ctx.fillText(text, 0, height / 2);
+function sendModeUpdate(
+  leftText: string,
+  rightText: string,
+  mode: string,
+): void {
+  const runtime = typeof browser === "undefined" ? null : browser.runtime;
+  if (!runtime) return;
+  void runtime.sendMessage({
+    type: "thundervim:mode",
+    mode,
+    left: leftText,
+    right: rightText,
+  });
 }
+
 function setBar(leftText: string, rightText: string, mode: string): void {
-  const bar = ensureBar();
-  bar.setAttribute("data-mode", mode);
-  drawStatusText(bar.querySelector(".tv-left")!, leftText);
-  drawStatusText(bar.querySelector(".tv-right")!, rightText || "");
+  clearLegacyStatusBars();
+  sendModeUpdate(leftText, rightText || "", mode);
   render();
 }
 function modeLabel(): string {
@@ -998,9 +936,7 @@ function updateRulerLive(): void {
   if (!enabled || state.mode !== MODE.INSERT) return;
   const b = readBuffer();
   if (!b) return;
-  const bar = ensureBar();
-  const r = bar.querySelector(".tv-right");
-  if (r) r.textContent = rulerFor(b.text, b.caret);
+  sendModeUpdate("-- INSERT --", rulerFor(b.text, b.caret), MODE.INSERT);
 }
 function updateBar(): void {
   if (!enabled) {

@@ -6,8 +6,8 @@ Vim keybindings for editing email in Thunderbird's compose window.
 
 Write email the way you edit code: Normal / Insert / Visual modes, motions,
 operators, text objects, search, and paragraph reflow, all inside the
-Thunderbird composer, with a mode line and block cursor to match. It works in
-both plain-text and rich-text (HTML) compose windows. In HTML, your existing
+Thunderbird composer, with a compose-toolbar mode indicator and block cursor to
+match. It works in both plain-text and rich-text (HTML) compose windows. In HTML, your existing
 formatting (quoted replies, signatures, bold, links) stays intact while you edit
 the text.
 
@@ -87,16 +87,17 @@ Counts combine with operators (e.g. `2dd`, `d3w`). Yank/paste use an internal
 register, so `y` / `p` never touch your system clipboard. **Nothing you edit
 leaves your machine.**
 
-## Modes and the status bar
+## Modes and the mode indicator
 
 - **Insert mode is the default** when a compose window opens, so you can type
   right away. Press `Esc` to enter Normal mode.
-- A **status bar** is pinned to the bottom of the editor showing the current
-  mode, plus a vim-style **ruler** on the right with the cursor's `line,column`
-  and its `Top` / `Bot` / `All` / percentage position through the message.
+- The **Thundervim compose-toolbar button** shows the current mode as its label
+  and badge (`INS`, `NOR`, `VIS`, …). Its tooltip includes the vim-style ruler
+  with the cursor's `line,column` and `Top` / `Bot` / `All` / percentage position
+  through the message.
 - A **block cursor** marks the character under the cursor in Normal / Visual
-  mode. The status bar and cursor live outside the message body and are never
-  sent.
+  mode. The mode indicator lives in Thunderbird's toolbar, outside the editable
+  message document, so it is never sent.
 - In Insert mode the native editor handles typing (IME, spellcheck, and
   reply-quoting all keep working); Thundervim only intercepts the keys that
   leave Insert mode.

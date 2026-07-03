@@ -50,6 +50,7 @@ async function copyAssets() {
 
 const options = {
   entryPoints: {
+    background: path.join(root, "src", "background.ts"),
     compose: path.join(root, "src", "compose.ts"),
     options: path.join(root, "src", "options.ts"),
   },
@@ -82,6 +83,7 @@ if (watch) {
       "-X",
       xpi,
       "manifest.json",
+      "background.js",
       "compose.js",
       "statusbar.css",
       "options.html",

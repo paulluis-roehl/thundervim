@@ -13,24 +13,27 @@
       "id": "thundervim@endler.dev",
       "strict_min_version": "151.0",
       "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
+        "required": ["none"]
       }
     }
   },
-  "permissions": [
-    "compose",
-    "storage"
-  ],
+  "permissions": ["compose", "storage"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "compose_action": {
+    "default_title": "Thundervim",
+    "default_label": "TV",
+    "default_icon": {
+      "48": "assets/icons/icon-48.png",
+      "96": "assets/icons/icon-96.png"
+    }
+  },
   "compose_scripts": [
     {
-      "js": [
-        "compose.js"
-      ],
-      "css": [
-        "statusbar.css"
-      ]
+      "js": ["compose.js"],
+      "css": ["statusbar.css"]
     }
   ],
   "options_ui": {

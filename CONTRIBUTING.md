@@ -13,11 +13,15 @@ Thundervim is split into two pieces with a hard boundary between them:
   is `handleKey(state, event)`. Because it has no environment dependencies, it
   is fully unit-tested under `node --test` with zero Thunderbird involvement.
 - **`src/compose.ts` — a thin adapter.** This is the only file that talks to the
-  Thunderbird compose window: it reads the contenteditable body, forwards keys
-  to the engine, and renders the engine's state back (buffer text, block cursor,
-  highlights, status bar). It loads user-facing settings from `storage.local`
-  through `src/config.ts`. It `import`s the engine directly; the two are bundled
-  into one content script at build time.
+  Thunderbird compose editor: it reads the contenteditable body, forwards keys
+  to the engine, renders the engine's state back (buffer text, block cursor,
+  highlights), and sends mode/ruler updates to the background script. It loads
+  user-facing settings from `storage.local` through `src/config.ts`. It `import`s
+  the engine directly; the two are bundled into one content script at build time.
+- **`src/background.ts` — compose toolbar integration.** It receives mode/ruler
+  updates from the compose script and updates Thunderbird's `compose_action`
+  label, badge, and tooltip. Keeping the mode indicator in Thunderbird chrome
+  avoids putting status text into the serializable message document.
 - **`src/options.ts` / `src/options.html` — the Thunderbird preferences page.** It
   edits the shared config stored by `src/config.ts`; compose windows read those
   settings when they open.
@@ -64,11 +68,12 @@ thundervim/
 ├── src/
 │   ├── engine.ts              pure vim state machine (no DOM)
 │   ├── compose.ts             compose-window adapter (DOM <-> engine)
+│   ├── background.ts          compose_action mode indicator bridge
 │   ├── config.ts              shared defaults + storage helpers
 │   ├── options.ts             preferences page logic
 │   ├── options.html           preferences page markup
 │   ├── options.css            preferences page styling
-│   └── statusbar.css          status bar + block cursor styling
+│   └── statusbar.css          block cursor + selection/search overlay styling
 ├── test/
 │   └── engine.test.ts         node --test unit suite for the engine
 ├── scripts/
@@ -100,8 +105,9 @@ test for every engine-level change — it's the fastest feedback loop.
 
 `addons-linter` is Mozilla's standard extension package linter. It is
 Firefox-oriented, so it currently warns that Thunderbird's `compose` permission
-is unknown; the warning is expected, but the linter still catches package layout,
-manifest, and policy issues and exits non-zero on errors.
+and `composeAction.*` APIs are unknown; those warnings are expected, but the
+linter still catches package layout, manifest, and policy issues and exits
+non-zero on errors.
 
 ### Testing in Thunderbird
 
@@ -137,8 +143,9 @@ npm run build
 ```
 
 This bundles `src/compose.ts` + `src/engine.ts` into the compose content script,
-bundles `src/options.ts` into the preferences script, and produces both a
-loadable, unpacked package at `dist/thundervim/` and
+bundles `src/background.ts` into the background script, bundles `src/options.ts`
+into the preferences script, and produces both a loadable, unpacked package at
+`dist/thundervim/` and
 `dist/thundervim-<version>.xpi` (a zip with `manifest.json` at the root plus the
 bundled scripts, CSS, options page, and packaged icons under `assets/icons/`; no
 tests, TypeScript sources, or tooling). The `.xpi` is what you submit to

@@ -1,7 +1,8 @@
 /* Thundervim overlays.
  *
- * The mode status bar is styled inside a Shadow DOM in compose.ts, so this file
- * only contains the block cursor and selection/search highlight overlays.
+ * The mode indicator lives in Thunderbird's compose toolbar via compose_action,
+ * outside the serializable message document. This file only contains the block
+ * cursor and selection/search highlight overlays.
  */
 
 /* Fake block cursor for Normal / Visual mode. `mix-blend-mode: difference`
