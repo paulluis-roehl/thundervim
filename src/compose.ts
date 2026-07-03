@@ -869,6 +869,13 @@ function ensureBar(): HTMLElement {
     host.setAttribute("contenteditable", "false");
     (document.documentElement || document.body).appendChild(host);
   }
+  // Keep the light DOM host empty and textless (safe for send serialization),
+  // but make the host itself the fixed viewport container. Some Thunderbird
+  // compose builds do not reliably paint position:fixed descendants inside an
+  // otherwise layoutless shadow host.
+  host.style.cssText =
+    "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;" +
+    "display:block;box-sizing:border-box;pointer-events:none;";
 
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
   let bar = shadow.getElementById("thundervim-status");
@@ -877,12 +884,8 @@ function ensureBar(): HTMLElement {
     const style = document.createElement("style");
     style.textContent = `
       #thundervim-status {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 2147483647;
         box-sizing: border-box;
+        width: 100%;
         display: flex;
         justify-content: space-between;
         align-items: center;
