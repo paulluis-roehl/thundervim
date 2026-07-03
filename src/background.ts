@@ -214,7 +214,7 @@ extensionApi()?.runtime.onMessage.addListener(async (message, sender) => {
 
   await Promise.all([
     api.composeAction.setTitle({ ...details, title }),
-    api.composeAction.setLabel({ ...details, label: "TV" }),
+    api.composeAction.setLabel({ ...details, label: "Vim" }),
     api.composeAction.setBadgeText({ ...details, text: badge }),
     api.composeAction.setBadgeBackgroundColor({
       ...details,

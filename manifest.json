@@ -25,7 +25,7 @@
   "compose_action": {
     "default_area": "maintoolbar",
     "default_title": "Thundervim",
-    "default_label": "TV",
+    "default_label": "Vim",
     "default_icon": {
       "48": "assets/icons/icon-48.png",
       "96": "assets/icons/icon-96.png"

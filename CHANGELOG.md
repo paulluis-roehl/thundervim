@@ -7,7 +7,7 @@ This release focuses on making Thundervim feel native in Thunderbird while keepi
 ### Added
 
 - **Configurable preferences UI** for startup mode, enable/disable behavior, the toggle chord, optional insert-mode escape sequence, `shiftwidth`, and `textwidth`.
-- **Compose toolbar button** with a compact `TV` label and a one-character status badge. Click it to enable or disable Thundervim in the current compose window.
+- **Compose toolbar button** with a compact `Vim` label and a one-character status badge. Click it to enable or disable Thundervim in the current compose window.
 - **Production packaging** with TypeScript, esbuild, a Makefile, add-on icons, an MIT license, a stable extension ID, CI, and add-on linting.
 
 ### Fixed
