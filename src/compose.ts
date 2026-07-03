@@ -838,34 +838,52 @@ function ensureBar(): HTMLElement {
     bar.setAttribute("contenteditable", "false");
     (document.documentElement || document.body).appendChild(bar);
   }
-  if (!bar.querySelector(".tv-left")) {
-    const left = document.createElement("span");
+
+  // Thunderbird's plain-text send serializer includes visible DOM text and even
+  // CSS generated text from nodes under <html>. The status bar must therefore
+  // contain no serializable text at all. Rebuild it from canvases on every load
+  // to clear spans/data-text left by older injected versions.
+  if (
+    !(bar.querySelector(".tv-left") instanceof HTMLCanvasElement) ||
+    !(bar.querySelector(".tv-right") instanceof HTMLCanvasElement)
+  ) {
+    bar.replaceChildren();
+    const left = document.createElement("canvas");
     left.className = "tv-left";
-    const right = document.createElement("span");
+    const right = document.createElement("canvas");
     right.className = "tv-right";
     bar.appendChild(left);
     bar.appendChild(right);
   }
-  // Live add-on reloads can leave a status bar created by an older version that
-  // stored visible text in real text nodes. Remove any such stale text so the
-  // plain-text send serializer has nothing to emit.
-  for (const node of Array.from(bar.childNodes)) {
-    if (node.nodeType === Node.TEXT_NODE) node.remove();
-  }
   return bar;
 }
-function setGeneratedText(el: Element, text: string): void {
-  el.textContent = "";
-  el.setAttribute("data-text", text);
+function drawStatusText(canvas: HTMLCanvasElement, text: string): void {
+  const bar = canvas.parentElement!;
+  const style = getComputedStyle(bar);
+  const dpr = window.devicePixelRatio || 1;
+  const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = font;
+  const width = Math.ceil(ctx.measureText(text || " ").width + 2);
+  const height = Math.ceil(parseFloat(style.lineHeight) || 18);
+
+  canvas.width = Math.max(1, Math.ceil(width * dpr));
+  canvas.height = Math.max(1, Math.ceil(height * dpr));
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+
+  ctx.scale(dpr, dpr);
+  ctx.font = font;
+  ctx.fillStyle = style.color;
+  ctx.textBaseline = "middle";
+  ctx.globalAlpha = canvas.classList.contains("tv-right") ? 0.85 : 1;
+  ctx.fillText(text, 0, height / 2);
 }
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
-  // Store the text in data-* attributes and render it via CSS generated
-  // content (see statusbar.css). Using real text nodes here would leak the
-  // status line into plain-text sends, which serialize the whole document.
-  setGeneratedText(bar.querySelector(".tv-left")!, leftText);
-  setGeneratedText(bar.querySelector(".tv-right")!, rightText || "");
   bar.setAttribute("data-mode", mode);
+  drawStatusText(bar.querySelector(".tv-left")!, leftText);
+  drawStatusText(bar.querySelector(".tv-right")!, rightText || "");
   render();
 }
 function modeLabel(): string {
