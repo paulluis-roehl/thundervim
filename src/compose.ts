@@ -1398,10 +1398,10 @@ async function init(): Promise<void> {
   document.addEventListener("selectionchange", updateRulerLive);
   // Last line of defense: remove all Thundervim chrome before Thunderbird
   // serializes the compose document for sending. If sending is canceled, the
-  // status bar is recreated shortly after.
+  // status bar is recreated shortly after. Avoid beforeunload/pagehide here:
+  // Thunderbird can fire those during normal compose frame lifecycle changes,
+  // which would hide the mode line while editing.
   window.addEventListener("compose-send-message", beforeSendCleanup, true);
-  window.addEventListener("beforeunload", removeChromeOverlays, true);
-  window.addEventListener("pagehide", removeChromeOverlays, true);
   // Keep the block cursor and selection aligned when the view moves without
   // a keystroke.
   window.addEventListener("scroll", render, true);
