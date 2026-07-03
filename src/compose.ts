@@ -245,7 +245,7 @@ function setNativeCaret(offset: number): void {
     const sel = window.getSelection()!;
     sel.removeAllRanges();
     sel.addRange(range);
-  } catch (err) {
+  } catch {
     /* boundary went stale; ignore */
   }
 }
@@ -265,7 +265,7 @@ function generalReplace(start: number, end: number, repl: string): boolean {
     range.deleteContents();
     if (repl) range.insertNode(document.createTextNode(repl));
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -648,7 +648,7 @@ function cursorRect(): { rect: DOMRect; collapsed: boolean } | null {
     else range.setStart(p.node, p.offset);
     range.collapse(true);
     return { rect: markerRect(range), collapsed: true };
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -732,7 +732,7 @@ function buildDomRange(start: number, end: number): Range | null {
   try {
     r.setStart(ps.node, ps.br ? 0 : ps.offset);
     r.setEnd(pe.node, pe.br ? 0 : pe.offset);
-  } catch (err) {
+  } catch {
     return null;
   }
   return r;
@@ -749,7 +749,7 @@ function selectRangeInDom(start: number, end: number): boolean {
     sel.removeAllRanges();
     sel.addRange(r);
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }
@@ -1361,7 +1361,13 @@ async function init(): Promise<void> {
   updateBar();
 }
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init, { once: true });
+  document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+      void init();
+    },
+    { once: true },
+  );
 } else {
-  init();
+  void init();
 }

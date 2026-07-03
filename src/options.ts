@@ -81,19 +81,23 @@ function readForm(): ThundervimConfig | null {
   };
 }
 
-form.addEventListener("submit", async (event) => {
+form.addEventListener("submit", (event) => {
   event.preventDefault();
-  const config = readForm();
-  if (!config) return;
-  await saveConfig(config);
-  setForm(await loadConfig());
-  setStatus("Saved. New compose windows will use these settings.");
+  void (async () => {
+    const config = readForm();
+    if (!config) return;
+    await saveConfig(config);
+    setForm(await loadConfig());
+    setStatus("Saved. New compose windows will use these settings.");
+  })();
 });
 
-reset.addEventListener("click", async () => {
-  await saveConfig(DEFAULT_CONFIG);
-  setForm(await loadConfig());
-  setStatus("Defaults restored.");
+reset.addEventListener("click", () => {
+  void (async () => {
+    await saveConfig(DEFAULT_CONFIG);
+    setForm(await loadConfig());
+    setStatus("Defaults restored.");
+  })();
 });
 
 void (async () => {

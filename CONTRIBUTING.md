@@ -88,14 +88,20 @@ thundervim/
 
 ```sh
 npm run typecheck   # tsc --noEmit (strict)
+npm run lint        # ESLint + typescript-eslint
 npm test            # runs the node:test engine suite on the .ts sources
-npm run check       # typecheck + test
+npm run lint:addon  # build + Mozilla addons-linter over dist/thundervim/
+npm run check       # typecheck + lint + test + add-on lint
 ```
 
 The engine suite covers motions, counts, operators, text objects, undo/redo
 granularity, visual mode, search, reflow, and the insert/normal handoff. Add a
-test for every engine-level change — it's the fastest feedback loop and the only
-thing CI runs.
+test for every engine-level change — it's the fastest feedback loop.
+
+`addons-linter` is Mozilla's standard extension package linter. It is
+Firefox-oriented, so it currently warns that Thunderbird's `compose` permission
+is unknown; the warning is expected, but the linter still catches package layout,
+manifest, and policy issues and exits non-zero on errors.
 
 ### Testing in Thunderbird
 
@@ -141,11 +147,11 @@ tests, TypeScript sources, or tooling). The `.xpi` is what you submit to
 ## Continuous integration
 
 - **`.github/workflows/ci.yml`** runs on every push to `main` and on pull
-  requests (Node 24): `npm run typecheck`, `npm test`, then builds the `.xpi`
-  and uploads it as a build artifact.
+  requests (Node 24): type-checks, runs ESLint, runs the tests, builds the
+  `.xpi`, runs `addons-linter`, and uploads the package as a build artifact.
 - **`.github/workflows/release.yml`** runs when a `v*` tag is pushed. It verifies
-  the tag matches `manifest.json`'s `version`, type-checks, runs the tests,
-  builds the `.xpi`, and publishes a GitHub Release with the package attached.
+  the tag matches `manifest.json`'s `version`, runs the same checks, builds the
+  `.xpi`, and publishes a GitHub Release with the package attached.
 
 ## Cutting a release
 

@@ -32,11 +32,17 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      - name: ESLint
+        run: npm run lint
+
       - name: Unit tests
         run: npm test
 
       - name: Build .xpi
         run: npm run build
+
+      - name: Add-on linter
+        run: npx addons-linter dist/thundervim
 
       - name: Publish GitHub release with the .xpi attached
         uses: softprops/action-gh-release@v2

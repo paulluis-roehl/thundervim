@@ -1073,7 +1073,7 @@ function applyOperator(state: State, op: Operator, motion: Motion): void {
     return;
   }
 
-  let start = Math.min(state.cursor, motion.pos);
+  const start = Math.min(state.cursor, motion.pos);
   let end = Math.max(state.cursor, motion.pos);
   if (motion.kind === "incl") end += 1;
   if (motion.kind === "incl-eol") end = motion.pos;

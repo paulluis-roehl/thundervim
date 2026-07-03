@@ -7,7 +7,7 @@
 NPM := npm
 
 .DEFAULT_GOAL := build
-.PHONY: all build watch check typecheck test clean
+.PHONY: all build watch check typecheck lint lint-addon test clean
 
 ## build:     bundle the add-on and package dist/thundervim-<version>.xpi
 build: node_modules
@@ -20,13 +20,21 @@ all: check build
 watch: node_modules
 	$(NPM) run watch
 
-## check:     strict type-check + engine test suite
+## check:     type-check + ESLint + tests + add-on linter
 check: node_modules
 	$(NPM) run check
 
 ## typecheck: strict type-check only
 typecheck: node_modules
 	$(NPM) run typecheck
+
+## lint:      run ESLint on TypeScript and build scripts
+lint: node_modules
+	$(NPM) run lint
+
+## lint-addon: build and run Mozilla's add-on linter
+lint-addon: node_modules
+	$(NPM) run lint:addon
 
 ## test:      run the engine test suite
 test: node_modules

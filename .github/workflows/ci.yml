@@ -18,10 +18,14 @@ jobs:
       - run: npm ci
       - name: Type-check
         run: npm run typecheck
+      - name: ESLint
+        run: npm run lint
       - name: Unit tests
         run: npm test
       - name: Build .xpi
         run: npm run build
+      - name: Add-on linter
+        run: npx addons-linter dist/thundervim
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
