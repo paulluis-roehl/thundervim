@@ -933,6 +933,15 @@
       updateBar();
       return;
     }
+
+    // Debug chord (Ctrl-Alt-D): log the DOM + linear model to the console. Works
+    // regardless of enabled state so it can capture round-trip bug reports.
+    if (ev.ctrl && ev.alt && !ev.meta && ev.key.toLowerCase() === "d") {
+      swallow(e);
+      dumpState("manual");
+      return;
+    }
+
     if (!enabled) return;
 
     // Ignore standalone modifier presses. Their keydown fires between a prefix
