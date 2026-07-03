@@ -1,12 +1,21 @@
 # Changelog
 
+## v0.3.3
+
+Multi-cursor editing and platform-native shortcuts.
+
+### Added
+
+- **Multi-cursor editing MVP:** `Cmd-Option-Up/Down` on macOS or `Ctrl-Alt-Up/Down` on Windows/Linux add cursors above / below; vim motions move every cursor, and Insert-mode typing mirrors text at each cursor.
+- **Platform-aware Thundervim shortcuts:** macOS uses `Cmd` as the primary modifier, while Windows/Linux use `Ctrl`.
+
 ## v0.3.2
 
 This release focuses on making Thundervim feel native in Thunderbird while keeping outgoing mail clean.
 
 ### Added
 
-- **Configurable preferences UI** for startup mode, enable/disable behavior, the toggle chord, optional insert-mode escape sequence, `shiftwidth`, and `textwidth`.
+- **Configurable preferences UI** for startup mode, enable/disable behavior, the platform-aware toggle chord, optional insert-mode escape sequence, `shiftwidth`, and `textwidth`.
 - **Compose toolbar button** with a compact `Vim` label and a one-character status badge. Click it to enable or disable Thundervim in the current compose window.
 - **Production packaging** with TypeScript, esbuild, a Makefile, add-on icons, an MIT license, a stable extension ID, CI, and add-on linting.
 

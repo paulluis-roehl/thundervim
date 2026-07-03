@@ -8,12 +8,17 @@
 /* Fake block cursor for Normal / Visual mode. `mix-blend-mode: difference`
  * inverts whatever is underneath, so it reads as a classic block cursor on top
  * of the text regardless of theme. It lives on <html>, never in the message. */
-#thundervim-cursor {
+#thundervim-cursor,
+.thundervim-extra-cursor {
     position: fixed;
     z-index: 2147483646;
     background: #ffffff;
     mix-blend-mode: difference;
     pointer-events: none;
+    display: none;
+}
+
+#thundervim-multi-cursors {
     display: none;
 }
 

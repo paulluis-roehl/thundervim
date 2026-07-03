@@ -82,8 +82,9 @@ misbehaves on a complex message, please file an issue.
 | Search | `/pat` `?pat` (smartcase), `*` / `#` (word under cursor), `n` / `N` to step; matches highlight while typing and persist until `Esc` |
 | Undo / redo | `u`, `Ctrl-r` |
 | Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
+| Multi-cursor | macOS: `Cmd-Option-Down` / `Cmd-Option-Up`; Windows/Linux: `Ctrl-Alt-Down` / `Ctrl-Alt-Up`. Adds cursors below / above; vim motions and Insert-mode typing apply to all cursors; `Esc` in Normal mode clears extra cursors |
 | Leave insert | `Esc` |
-| Toggle on/off | `Ctrl-Alt-V` |
+| Toggle on/off | macOS: `Cmd-Option-V`; Windows/Linux: `Ctrl-Alt-V` |
 
 Counts combine with operators (e.g. `2dd`, `d3w`). Yank/paste use an internal
 register, so `y` / `p` never touch your system clipboard. **Nothing you edit
@@ -105,9 +106,14 @@ leaves your machine.**
 - In Insert mode the native editor handles typing (IME, spellcheck, and
   reply-quoting all keep working); Thundervim only intercepts the keys that
   leave Insert mode.
-- Any `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird, so
-  **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), and friends still work. The one
-  exception is `Ctrl-r`, which is redo.
+- `Cmd-Option-Down/Up` on macOS, or `Ctrl-Alt-Down/Up` on Windows/Linux, adds
+  multi-cursors below / above the current cursor. Vim motions like `w`, `b`, `j`,
+  or `$` move every cursor. Enter Insert mode and type to mirror text, newlines,
+  and simple backspace/delete edits at every cursor. Press `Esc` in Normal mode
+  to clear the extra cursors.
+- Any other `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird,
+  so **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), and friends still work. The
+  one exception is `Ctrl-r`, which is redo.
 
 ## Configuration
 

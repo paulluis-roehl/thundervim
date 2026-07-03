@@ -1,4 +1,5 @@
 export interface ToggleConfig {
+  // Platform primary modifier: Cmd on macOS, Ctrl on Windows/Linux.
   ctrl: boolean;
   alt: boolean;
   shift: boolean;

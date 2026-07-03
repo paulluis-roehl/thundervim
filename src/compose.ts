@@ -91,6 +91,32 @@ let searchMsg = "";
 // edit. Thunderbird's editor inserts characters via `beforeinput`, which a
 // content-script `keydown` preventDefault() does not cancel on its own.
 let suppressInput = false;
+// Extra cursor offsets for multi-cursor Insert-mode mirroring. The primary
+// cursor remains `state.cursor` so existing vim motions/operators keep working.
+let extraCursors: number[] = [];
+
+function allCursors(): number[] {
+  return Array.from(new Set([state.cursor, ...extraCursors])).sort(
+    (a, b) => a - b,
+  );
+}
+
+function normalizeExtraCursors(): void {
+  extraCursors = Array.from(new Set(extraCursors))
+    .filter((pos) => pos !== state.cursor)
+    .sort((a, b) => a - b);
+}
+
+function clearExtraCursors(): void {
+  if (!extraCursors.length) return;
+  extraCursors = [];
+  render();
+  updateBar();
+}
+
+function multiCursorCount(): number {
+  return 1 + extraCursors.length;
+}
 
 // ---------------------------------------------------------- DOM <-> text
 
@@ -327,6 +353,7 @@ function topLevelSpans(): Span[] | null {
       isElement(node) &&
       (node.id === "thundervim-status" ||
         node.id === "thundervim-cursor" ||
+        node.id === "thundervim-multi-cursors" ||
         node.id === "thundervim-highlights")
     );
   }
@@ -586,6 +613,7 @@ function domPointAt(target: number): DomPoint | null {
     if (
       node.id === "thundervim-status" ||
       node.id === "thundervim-cursor" ||
+      node.id === "thundervim-multi-cursors" ||
       node.id === "thundervim-highlights"
     )
       return;
@@ -640,8 +668,10 @@ function domBoundary(offset: number): Boundary | null {
 // Rect of the character the Normal-mode cursor sits on (viewport coords).
 // Returns { rect, collapsed } where `collapsed` means there is no character
 // under the cursor (empty line / end of line) so a default width is used.
-function cursorRect(): { rect: DOMRect; collapsed: boolean } | null {
-  const p = domPointAt(state.cursor);
+function cursorRectAt(
+  pos: number,
+): { rect: DOMRect; collapsed: boolean } | null {
+  const p = domPointAt(pos);
   if (!p) return null;
   const ch =
     !p.br && isText(p.node) && p.offset < p.node.data.length
@@ -686,6 +716,10 @@ function markerRect(range: Range): DOMRect {
   return rect;
 }
 
+function cursorRect(): { rect: DOMRect; collapsed: boolean } | null {
+  return cursorRectAt(state.cursor);
+}
+
 function ensureCursor(): HTMLElement {
   let el = document.getElementById("thundervim-cursor");
   if (!el) {
@@ -697,6 +731,47 @@ function ensureCursor(): HTMLElement {
   return el;
 }
 
+function ensureMultiCursors(): HTMLElement {
+  let el = document.getElementById("thundervim-multi-cursors");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "thundervim-multi-cursors";
+    el.setAttribute("contenteditable", "false");
+    (document.documentElement || document.body).appendChild(el);
+  }
+  return el;
+}
+
+function drawCursor(
+  el: HTMLElement,
+  cr: { rect: DOMRect; collapsed: boolean },
+): void {
+  const r = cr.rect;
+  el.style.display = "block";
+  el.style.left = r.left + "px";
+  el.style.top = r.top + "px";
+  el.style.width = (!cr.collapsed && r.width > 0 ? r.width : 8) + "px";
+  el.style.height = (r.height > 0 ? r.height : 16) + "px";
+}
+
+function updateExtraCursors(): void {
+  const cont = ensureMultiCursors();
+  while (cont.firstChild) cont.removeChild(cont.firstChild);
+  if (!enabled || !extraCursors.length) {
+    cont.style.display = "none";
+    return;
+  }
+  cont.style.display = "block";
+  for (const pos of extraCursors) {
+    const cr = cursorRectAt(pos);
+    if (!cr) continue;
+    const el = document.createElement("div");
+    el.className = "thundervim-extra-cursor";
+    drawCursor(el, cr);
+    cont.appendChild(el);
+  }
+}
+
 function updateCursor(): void {
   const el = ensureCursor();
   const normalish = enabled && state.mode !== MODE.INSERT;
@@ -705,19 +780,17 @@ function updateCursor(): void {
     document.body.style.caretColor = normalish ? "transparent" : "";
   if (!normalish) {
     el.style.display = "none";
+    updateExtraCursors();
     return;
   }
   const cr = cursorRect();
   if (!cr || !cr.rect) {
     el.style.display = "none";
+    updateExtraCursors();
     return;
   }
-  const r = cr.rect;
-  el.style.display = "block";
-  el.style.left = r.left + "px";
-  el.style.top = r.top + "px";
-  el.style.width = (!cr.collapsed && r.width > 0 ? r.width : 8) + "px";
-  el.style.height = (r.height > 0 ? r.height : 16) + "px";
+  drawCursor(el, cr);
+  updateExtraCursors();
 }
 
 // ------------------------------------------------ visual selection overlay
@@ -852,6 +925,7 @@ function removeChromeOverlays(): void {
     "thundervim-status",
     "thundervim-status-host",
     "thundervim-cursor",
+    "thundervim-multi-cursors",
     "thundervim-highlights",
   ]) {
     document.getElementById(id)?.remove();
@@ -989,8 +1063,205 @@ function updateBar(): void {
     modeLabel() +
     " --" +
     pendingHint() +
+    (multiCursorCount() > 1 ? "  " + multiCursorCount() + " cursors" : "") +
     (searchMsg ? "  " + searchMsg : "");
   setBar(left, ruler(), state.mode);
+}
+
+interface MultiEditOp {
+  start: number;
+  end: number;
+  repl: string;
+  primary: boolean;
+}
+
+function targetColumn(pos: number): number {
+  return pos - lineStartAt(state.text, pos);
+}
+
+function cursorLine(pos: number): number {
+  return state.text.slice(0, pos).split("\n").length - 1;
+}
+
+function lineSpanAtIndex(line: number): { start: number; end: number } | null {
+  if (line < 0) return null;
+  let start = 0;
+  let current = 0;
+  for (let i = 0; i <= state.text.length; i++) {
+    if (i === state.text.length || state.text[i] === "\n") {
+      if (current === line) return { start, end: i };
+      start = i + 1;
+      current++;
+    }
+  }
+  return null;
+}
+
+function offsetAtLineColumn(line: number, col: number): number | null {
+  const span = lineSpanAtIndex(line);
+  if (!span) return null;
+  return clampNormal(state.text, Math.min(span.start + col, span.end));
+}
+
+function addVerticalCursor(delta: -1 | 1): void {
+  if (!enabled) return;
+  const cursors = allCursors();
+  const base = delta > 0 ? cursors[cursors.length - 1] : cursors[0];
+  const target = offsetAtLineColumn(
+    cursorLine(base) + delta,
+    targetColumn(base),
+  );
+  if (target == null) return;
+  extraCursors = cursors.filter((pos) => pos !== target);
+  state.cursor = target;
+  normalizeExtraCursors();
+  setNativeCaret(state.cursor);
+  render();
+  updateBar();
+}
+
+function isMacOS(): boolean {
+  return /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+}
+
+function primaryModifier(ev: NormKey): boolean {
+  return isMacOS() ? ev.meta : ev.ctrl;
+}
+
+function nonPrimaryModifier(ev: NormKey): boolean {
+  return isMacOS() ? ev.ctrl : ev.meta;
+}
+
+function isAddCursorBelow(ev: NormKey): boolean {
+  return (
+    primaryModifier(ev) &&
+    ev.alt &&
+    !ev.shift &&
+    !nonPrimaryModifier(ev) &&
+    (ev.key === "ArrowDown" || ev.code === "ArrowDown")
+  );
+}
+
+function isAddCursorAbove(ev: NormKey): boolean {
+  return (
+    primaryModifier(ev) &&
+    ev.alt &&
+    !ev.shift &&
+    !nonPrimaryModifier(ev) &&
+    (ev.key === "ArrowUp" || ev.code === "ArrowUp")
+  );
+}
+
+function multiEditOps(input: InputEvent): MultiEditOp[] | null {
+  const cursors = allCursors();
+  if (cursors.length <= 1) return null;
+  const data = input.data ?? "";
+  switch (input.inputType) {
+    case "insertText":
+    case "insertCompositionText":
+    case "insertReplacementText":
+      return data
+        ? cursors.map((pos) => ({
+            start: pos,
+            end: pos,
+            repl: data,
+            primary: pos === state.cursor,
+          }))
+        : null;
+    case "insertLineBreak":
+    case "insertParagraph":
+      return cursors.map((pos) => ({
+        start: pos,
+        end: pos,
+        repl: "\n",
+        primary: pos === state.cursor,
+      }));
+    case "deleteContentBackward":
+      return cursors
+        .filter((pos) => pos > 0)
+        .map((pos) => ({
+          start: pos - 1,
+          end: pos,
+          repl: "",
+          primary: pos === state.cursor,
+        }));
+    case "deleteContentForward":
+      return cursors
+        .filter((pos) => pos < state.text.length)
+        .map((pos) => ({
+          start: pos,
+          end: pos + 1,
+          repl: "",
+          primary: pos === state.cursor,
+        }));
+    default:
+      return null;
+  }
+}
+
+function cloneStateForCursor(
+  text: string,
+  cursor: number,
+  source: State,
+): State {
+  const clone = createState(text, cursor);
+  clone.mode = source.mode;
+  clone.desiredCol = source.desiredCol;
+  clone.anchor = source.anchor;
+  clone.lastFind = source.lastFind ? { ...source.lastFind } : null;
+  clone.shiftwidth = source.shiftwidth;
+  clone.textwidth = source.textwidth;
+  clone.search = { ...source.search };
+  clone.hlsearch = source.hlsearch;
+  clone.lastSearchInfo = source.lastSearchInfo
+    ? { ...source.lastSearchInfo }
+    : null;
+  clone.pending = { ...source.pending };
+  return clone;
+}
+
+function mirrorExtraCursorMotion(
+  ev: NormKey,
+  before: State,
+  beforeExtraCursors: number[],
+): void {
+  if (!beforeExtraCursors.length || state.text !== before.text) return;
+  const next: number[] = [];
+  for (const cursor of beforeExtraCursors) {
+    const clone = cloneStateForCursor(before.text, cursor, before);
+    const result = handleKey(clone, ev);
+    if (!result.handled || clone.text !== before.text) return;
+    next.push(clone.cursor);
+  }
+  extraCursors = next;
+  normalizeExtraCursors();
+}
+
+function applyMultiEdit(ops: MultiEditOp[]): void {
+  const ordered = ops
+    .slice()
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+    .filter((op, idx, arr) => idx === 0 || op.start >= arr[idx - 1].end);
+  let out = "";
+  let last = 0;
+  let delta = 0;
+  const nextPositions: number[] = [];
+  let primary = state.cursor;
+  for (const op of ordered) {
+    out += state.text.slice(last, op.start) + op.repl;
+    const next = op.start + delta + op.repl.length;
+    nextPositions.push(next);
+    if (op.primary) primary = next;
+    delta += op.repl.length - (op.end - op.start);
+    last = op.end;
+  }
+  out += state.text.slice(last);
+  state.text = out;
+  state.cursor = primary;
+  extraCursors = nextPositions.filter((pos) => pos !== primary);
+  normalizeExtraCursors();
+  syncDom(true);
+  updateBar();
 }
 
 // --------------------------------------------------------- key handling
@@ -1044,6 +1315,22 @@ const TEXT_EDIT_INPUT_TYPES: Record<string, number> = {
 // beforeinput for the same key are cancelled without affecting later,
 // unrelated input events.
 function onInputEvent(e: Event): void {
+  if (
+    e.type === "beforeinput" &&
+    enabled &&
+    state.mode === MODE.INSERT &&
+    extraCursors.length > 0
+  ) {
+    const ops = multiEditOps(e as InputEvent);
+    if (ops) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      applyMultiEdit(ops);
+      return;
+    }
+  }
+
   if (!suppressInput) return;
   // A `beforeinput` carries an inputType; only suppress genuine text edits.
   // Formatting/clipboard/history commands (which have no keypress) pass.
@@ -1061,9 +1348,10 @@ function onInputEvent(e: Event): void {
 function isToggle(ev: NormKey): boolean {
   const t = config.toggle;
   return (
-    !!t.ctrl === ev.ctrl &&
+    !!t.ctrl === primaryModifier(ev) &&
     !!t.alt === ev.alt &&
     !!t.shift === !!ev.shift &&
+    !nonPrimaryModifier(ev) &&
     ev.key.toLowerCase() === t.key.toLowerCase()
   );
 }
@@ -1195,6 +1483,9 @@ function toggleEnabled(): void {
     syncFromEditor(state, b ? b.text : "", b ? b.caret : 0);
     state.mode = MODE.NORMAL;
     syncDom(false);
+  } else {
+    extraCursors = [];
+    render();
   }
   updateBar();
 }
@@ -1224,6 +1515,16 @@ function onKeydown(e: KeyboardEvent): void {
   if (isToggle(ev)) {
     swallow(e);
     toggleEnabled();
+    return;
+  }
+
+  if (
+    enabled &&
+    state.mode !== MODE.INSERT &&
+    (isAddCursorBelow(ev) || isAddCursorAbove(ev))
+  ) {
+    swallow(e);
+    addVerticalCursor(isAddCursorBelow(ev) ? 1 : -1);
     return;
   }
 
@@ -1295,8 +1596,13 @@ function onKeydown(e: KeyboardEvent): void {
       // Escape handler performs the single Normal-mode "move left".
       state.text = buf.text;
       state.cursor = buf.caret;
+      const insertCursors = extraCursors.slice();
       const r = handleKey(state, ev); // -> Normal, cursor left once
       if (r.handled) {
+        extraCursors = insertCursors.map((pos) =>
+          clampNormal(state.text, pos - 1),
+        );
+        normalizeExtraCursors();
         swallow(e);
         syncDom(false);
         updateBar();
@@ -1305,6 +1611,16 @@ function onKeydown(e: KeyboardEvent): void {
     }
     if (handleInsertEscape(e, ev)) return;
     return; // let the native editor type
+  }
+
+  if (
+    state.mode === MODE.NORMAL &&
+    ev.key === "Escape" &&
+    extraCursors.length
+  ) {
+    swallow(e);
+    clearExtraCursors();
+    return;
   }
 
   // Open the search prompt (`/` forward, `?` backward) from Normal mode.
@@ -1320,6 +1636,8 @@ function onKeydown(e: KeyboardEvent): void {
   // thing editing the buffer), so we do NOT re-read the caret from the DOM per
   // key — doing so lets Gecko's caret normalization on empty lines desync
   // vertical motion. Mouse repositioning is handled by the mouseup listener.
+  const before = cloneStateForCursor(state.text, state.cursor, state);
+  const beforeExtraCursors = extraCursors.slice();
   const res = handleKey(state, ev);
   if (!res.handled) {
     updateBar(); // reflect pending count/operator
@@ -1334,6 +1652,7 @@ function onKeydown(e: KeyboardEvent): void {
   // can be recovered for dot-repeat when Insert mode exits. handleKey may have
   // switched the mode; cast past the stale narrowing from the earlier Insert
   // check above, which TS can't know handleKey invalidated.
+  mirrorExtraCursorMotion(ev, before, beforeExtraCursors);
   const enteredInsert = (state.mode as Mode) === MODE.INSERT;
   if (enteredInsert) {
     insertStart = { text: state.text, cursor: state.cursor };
