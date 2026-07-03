@@ -1053,10 +1053,12 @@
 
   // ---------------------------------------------------------------- init
 
-  // Diagnostic: dump the live DOM and the linear model. Copies the JSON to the
-  // clipboard (content-script console.log is not visible in Thunderbird's Error
-  // Console) and flashes a confirmation in the status bar. Triggered by
-  // Ctrl-Alt-D; see onKeydown.
+  // Diagnostic: dump the live DOM and the linear model. Neither the content-
+  // script console nor the clipboard APIs are usable in Thunderbird's compose
+  // sandbox (console output is hidden; navigator.clipboard is undefined and
+  // execCommand("copy") silently no-ops inside the contenteditable). So we show
+  // the JSON in a visible, pre-selected textarea overlay: the user copies it
+  // with a native Cmd+C and dismisses it with Esc. Triggered by Ctrl-Alt-D.
   function dumpState(label) {
     var b = readBuffer();
     var info = {
@@ -1070,59 +1072,58 @@
     var json = JSON.stringify(info, null, 2);
     if (typeof console !== "undefined" && console.log)
       console.log("thundervim dump", info);
-    var ok = copyToClipboard(json);
-    var msg = ok
-      ? "-- thundervim: dump copied to clipboard --"
-      : "-- thundervim: copy failed (see console) --";
-    setBar(msg, "", "normal");
-    setTimeout(updateBar, 2500);
+    showDumpOverlay(json);
     return info;
   }
 
-  // Copy text to the clipboard from within a user gesture. Thunderbird's
-  // content-script sandbox does not expose navigator.clipboard, so fall back to
-  // the legacy execCommand("copy") path via an off-screen textarea. That path
-  // only works while handling a real key/mouse event, which dumpState always is.
-  function copyToClipboard(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(null, function () {});
-        return true;
+  var dumpOverlay = null;
+  function closeDumpOverlay() {
+    if (dumpOverlay && dumpOverlay.parentNode)
+      dumpOverlay.parentNode.removeChild(dumpOverlay);
+    dumpOverlay = null;
+    if (document.body && document.body.focus) document.body.focus();
+    updateBar();
+  }
+  function showDumpOverlay(text) {
+    closeDumpOverlay();
+    var doc = document;
+    var host = doc.body || doc.documentElement;
+    var overlay = doc.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.55);" +
+      "display:flex;flex-direction:column;padding:24px;box-sizing:border-box;";
+    var hint = doc.createElement("div");
+    hint.textContent =
+      "thundervim dump \u2014 press Cmd+C to copy, Esc to close";
+    hint.style.cssText =
+      "color:#fff;font:13px/1.4 monospace;margin-bottom:8px;flex:0 0 auto;";
+    var ta = doc.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText =
+      "flex:1 1 auto;width:100%;box-sizing:border-box;font:12px/1.4 monospace;" +
+      "padding:8px;resize:none;background:#111;color:#eee;border:1px solid #555;";
+    ta.addEventListener("keydown", function (e) {
+      // Keep the vim keydown handler out; let native copy/select work here.
+      e.stopPropagation();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeDumpOverlay();
       }
-    } catch (err) {
-      /* fall through to execCommand */
-    }
-    try {
-      var doc = document;
-      var ta = doc.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed";
-      ta.style.top = "-1000px";
-      ta.style.left = "-1000px";
-      ta.style.opacity = "0";
-      (doc.body || doc.documentElement).appendChild(ta);
-      var sel = doc.getSelection ? doc.getSelection() : null;
-      var saved = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
-      ta.focus();
-      ta.select();
-      var copied = false;
-      try {
-        copied = doc.execCommand("copy");
-      } catch (e2) {
-        copied = false;
-      }
-      (doc.body || doc.documentElement).removeChild(ta);
-      // Restore the caret/selection we clobbered by focusing the textarea.
-      if (sel) {
-        sel.removeAllRanges();
-        if (saved) sel.addRange(saved);
-      }
-      if (doc.body && doc.body.focus) doc.body.focus();
-      return copied;
-    } catch (err2) {
-      return false;
-    }
+    });
+    overlay.addEventListener("mousedown", function (e) {
+      if (e.target === overlay) closeDumpOverlay(); // click backdrop to close
+    });
+    overlay.appendChild(hint);
+    overlay.appendChild(ta);
+    host.appendChild(overlay);
+    dumpOverlay = overlay;
+    ta.focus();
+    ta.select();
+    setBar(
+      "-- thundervim: dump ready (Cmd+C to copy, Esc to close) --",
+      "",
+      "normal",
+    );
   }
   if (typeof window !== "undefined") window.thundervim_dump = dumpState;
 
