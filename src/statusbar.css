@@ -1,7 +1,6 @@
 /* Thundervim overlays.
  *
- * The mode status bar is visible while editing, but contains only canvas pixels
- * (no text nodes and no CSS generated text). compose.ts removes it on
+ * The mode status bar is visible while editing and is removed on
  * compose-send-message before Thunderbird serializes the document.
  */
 
@@ -28,12 +27,9 @@
     white-space: pre;
 }
 
-#thundervim-status canvas {
-    display: block;
-}
-
 #thundervim-status .tv-right {
-    margin-left: 16px;
+    padding-left: 16px;
+    opacity: 0.85;
 }
 
 #thundervim-status[data-mode="insert"] {

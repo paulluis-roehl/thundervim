@@ -865,50 +865,25 @@ function ensureBar(): HTMLElement {
     (document.documentElement || document.body).appendChild(bar);
   }
 
-  // The visible bar uses canvases, not text nodes or generated text. The
-  // compose-send-message handler removes the whole bar before Thunderbird
-  // serializes the document for sending.
-  if (
-    !(bar.querySelector(".tv-left") instanceof HTMLCanvasElement) ||
-    !(bar.querySelector(".tv-right") instanceof HTMLCanvasElement)
-  ) {
+  // Use ordinary spans for maximum compatibility with Thunderbird's compose
+  // editor. The compose-send-message handler removes the whole bar before
+  // Thunderbird serializes the document for sending.
+  if (!bar.querySelector(".tv-left") || !bar.querySelector(".tv-right")) {
     bar.replaceChildren();
-    const left = document.createElement("canvas");
+    const left = document.createElement("span");
     left.className = "tv-left";
-    const right = document.createElement("canvas");
+    const right = document.createElement("span");
     right.className = "tv-right";
     bar.appendChild(left);
     bar.appendChild(right);
   }
   return bar;
 }
-function drawStatusText(canvas: HTMLCanvasElement, text: string): void {
-  const bar = canvas.parentElement!;
-  const style = getComputedStyle(bar);
-  const dpr = window.devicePixelRatio || 1;
-  const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-  const ctx = canvas.getContext("2d")!;
-  ctx.font = font;
-  const width = Math.ceil(ctx.measureText(text || " ").width + 2);
-  const height = Math.ceil(parseFloat(style.lineHeight) || 18);
-
-  canvas.width = Math.max(1, Math.ceil(width * dpr));
-  canvas.height = Math.max(1, Math.ceil(height * dpr));
-  canvas.style.width = width + "px";
-  canvas.style.height = height + "px";
-
-  ctx.scale(dpr, dpr);
-  ctx.font = font;
-  ctx.fillStyle = style.color;
-  ctx.textBaseline = "middle";
-  ctx.globalAlpha = canvas.classList.contains("tv-right") ? 0.85 : 1;
-  ctx.fillText(text, 0, height / 2);
-}
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
   bar.setAttribute("data-mode", mode);
-  drawStatusText(bar.querySelector(".tv-left")!, leftText);
-  drawStatusText(bar.querySelector(".tv-right")!, rightText || "");
+  bar.querySelector(".tv-left")!.textContent = leftText;
+  bar.querySelector(".tv-right")!.textContent = rightText || "";
   render();
 }
 function modeLabel(): string {
