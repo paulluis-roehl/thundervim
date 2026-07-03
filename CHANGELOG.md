@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.0
+
+A sentence motion plus a major rich-text (HTML) reliability fix.
+
+### Added
+
+- **Sentence motions** `(` and `)` move to the previous / next sentence start.
+  A sentence ends at `.`, `!`, or `?` (with any trailing `)`, `]`, `"`, `'`)
+  followed by whitespace, and never crosses a blank line — matching the `is` /
+  `as` text object added in v0.2.0.
+- **Diagnostic dump** on `Ctrl-Alt-D` (macOS: `Ctrl`+`Option`+`D`) opens an
+  overlay with the live DOM and the linear buffer model, ready to copy. Handy
+  for reporting a round-trip bug on a complex message.
+
+### Fixed
+
+- **Joining across paragraphs no longer destroys the message.** In HTML compose,
+  a `J` (or any edit) that merged two block elements used to fall back to a flat
+  rewrite that flattened the *entire* body — collapsing blank lines and wiping
+  the formatting of the quoted reply and signature. Structural edits now
+  re-render only the blocks they actually touch, leaving quoted replies and
+  other siblings fully intact.
+
 ## v0.2.0
 
 New editing commands and a batch of rich-text (HTML) fixes.
