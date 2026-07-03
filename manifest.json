@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Thundervim",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Vim keybindings for editing email in the Thunderbird compose window.",
   "icons": {
     "48": "assets/icons/icon-48.png",
@@ -13,15 +13,24 @@
       "id": "thundervim@endler.dev",
       "strict_min_version": "151.0",
       "data_collection_permissions": {
-        "required": ["none"]
+        "required": [
+          "none"
+        ]
       }
     }
   },
-  "permissions": ["compose", "storage"],
+  "permissions": [
+    "compose",
+    "storage"
+  ],
   "compose_scripts": [
     {
-      "js": ["compose.js"],
-      "css": ["statusbar.css"]
+      "js": [
+        "compose.js"
+      ],
+      "css": [
+        "statusbar.css"
+      ]
     }
   ],
   "options_ui": {
