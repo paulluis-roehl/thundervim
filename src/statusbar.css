@@ -36,3 +36,54 @@
     background: rgba(255, 213, 79, 0.4);
     pointer-events: none;
 }
+
+/* Vim-style mode line. This is intentionally removed before send and scrubbed
+ * again by compose.onBeforeSend, because Thunderbird serializes compose DOM
+ * aggressively for plain-text mail. */
+#thundervim-status {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2147483647;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 8px;
+    font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    color: #e6e6e6;
+    background: #202225;
+    border-top: 1px solid #000;
+    pointer-events: none;
+    user-select: none;
+    white-space: pre;
+}
+#thundervim-status .tv-right {
+    margin-left: 16px;
+    opacity: 0.85;
+}
+#thundervim-status[data-mode="insert"] {
+    background: #2e7d32;
+    color: #fff;
+}
+#thundervim-status[data-mode="normal"] {
+    background: #202225;
+    color: #e6e6e6;
+}
+#thundervim-status[data-mode="visual"],
+#thundervim-status[data-mode="visual-line"] {
+    background: #6a1b9a;
+    color: #fff;
+}
+#thundervim-status[data-mode="off"] {
+    background: #4a4a4a;
+    color: #d0d0d0;
+}
+#thundervim-status[data-mode="search"] {
+    background: #202225;
+    color: #ffd54f;
+}

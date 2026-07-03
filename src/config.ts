@@ -36,7 +36,13 @@ interface BrowserApi {
   storage?: { local?: StorageArea };
 }
 
-declare const browser: BrowserApi | undefined;
+function extensionApi(): BrowserApi | null {
+  const globals = globalThis as typeof globalThis & {
+    browser?: BrowserApi;
+    messenger?: BrowserApi;
+  };
+  return globals.messenger ?? globals.browser ?? null;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -98,8 +104,7 @@ export function normalizeConfig(value: unknown): ThundervimConfig {
 }
 
 function localStorageArea(): StorageArea | null {
-  if (typeof browser === "undefined") return null;
-  return browser.storage?.local ?? null;
+  return extensionApi()?.storage?.local ?? null;
 }
 
 export async function loadConfig(): Promise<ThundervimConfig> {

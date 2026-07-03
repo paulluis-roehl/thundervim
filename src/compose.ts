@@ -36,6 +36,9 @@ declare global {
 }
 
 interface RuntimeApi {
+  onMessage?: {
+    addListener(listener: (message: unknown) => void | Promise<void>): void;
+  };
   sendMessage(message: unknown): Promise<unknown>;
 }
 
@@ -43,7 +46,13 @@ interface BrowserApi {
   runtime?: RuntimeApi;
 }
 
-declare const browser: BrowserApi | undefined;
+function extensionApi(): BrowserApi | null {
+  const globals = globalThis as typeof globalThis & {
+    browser?: BrowserApi;
+    messenger?: BrowserApi;
+  };
+  return globals.messenger ?? globals.browser ?? null;
+}
 
 // ------------------------------------------------------------------ config
 let config: ThundervimConfig = DEFAULT_CONFIG;
@@ -862,9 +871,37 @@ function beforeSendCleanup(): void {
 
 // ----------------------------------------------------------- mode indicator
 
-function clearLegacyStatusBars(): void {
-  document.getElementById("thundervim-status")?.remove();
+const STATUS_MARKER = "\u2063\u200c\u200d\u2063";
+
+function ensureStatusBar(): HTMLElement {
   document.getElementById("thundervim-status-host")?.remove();
+  let bar = document.getElementById("thundervim-status");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "thundervim-status";
+    bar.setAttribute("contenteditable", "false");
+    const left = document.createElement("span");
+    left.className = "tv-left";
+    const right = document.createElement("span");
+    right.className = "tv-right";
+    bar.appendChild(left);
+    bar.appendChild(right);
+    (document.documentElement || document.body).appendChild(bar);
+  }
+  return bar;
+}
+
+function setStatusText(
+  leftText: string,
+  rightText: string,
+  mode: string,
+): void {
+  const bar = ensureStatusBar();
+  bar.setAttribute("data-mode", mode);
+  const left = bar.querySelector<HTMLElement>(".tv-left");
+  const right = bar.querySelector<HTMLElement>(".tv-right");
+  if (left) left.textContent = STATUS_MARKER + leftText;
+  if (right) right.textContent = rightText ? STATUS_MARKER + rightText : "";
 }
 
 function sendModeUpdate(
@@ -872,7 +909,7 @@ function sendModeUpdate(
   rightText: string,
   mode: string,
 ): void {
-  const runtime = typeof browser === "undefined" ? null : browser.runtime;
+  const runtime = extensionApi()?.runtime;
   if (!runtime) return;
   void runtime.sendMessage({
     type: "thundervim:mode",
@@ -883,7 +920,7 @@ function sendModeUpdate(
 }
 
 function setBar(leftText: string, rightText: string, mode: string): void {
-  clearLegacyStatusBars();
+  setStatusText(leftText, rightText || "", mode);
   sendModeUpdate(leftText, rightText || "", mode);
   render();
 }
@@ -936,7 +973,7 @@ function updateRulerLive(): void {
   if (!enabled || state.mode !== MODE.INSERT) return;
   const b = readBuffer();
   if (!b) return;
-  sendModeUpdate("-- INSERT --", rulerFor(b.text, b.caret), MODE.INSERT);
+  setBar("-- INSERT --", rulerFor(b.text, b.caret), MODE.INSERT);
 }
 function updateBar(): void {
   if (!enabled) {
@@ -1151,6 +1188,34 @@ function handleSearchKey(e: KeyboardEvent, ev: NormKey): void {
   // Ignore anything else (arrows, function keys) but keep the prompt open.
 }
 
+function toggleEnabled(): void {
+  enabled = !enabled;
+  if (enabled) {
+    const b = readBuffer();
+    syncFromEditor(state, b ? b.text : "", b ? b.caret : 0);
+    state.mode = MODE.NORMAL;
+    syncDom(false);
+  }
+  updateBar();
+}
+
+function messageType(message: unknown): string | null {
+  return typeof message === "object" && message !== null
+    ? (((message as { type?: unknown }).type as string | undefined) ?? null)
+    : null;
+}
+
+extensionApi()?.runtime?.onMessage?.addListener((message) => {
+  switch (messageType(message)) {
+    case "thundervim:toggle":
+      toggleEnabled();
+      break;
+    case "thundervim:before-send":
+      removeChromeOverlays();
+      break;
+  }
+});
+
 function onKeydown(e: KeyboardEvent): void {
   suppressInput = false;
   const ev = normalize(e);
@@ -1158,14 +1223,7 @@ function onKeydown(e: KeyboardEvent): void {
   // The enable/disable toggle works even while Thundervim is off.
   if (isToggle(ev)) {
     swallow(e);
-    enabled = !enabled;
-    if (enabled) {
-      const b = readBuffer();
-      syncFromEditor(state, b ? b.text : "", b ? b.caret : 0);
-      state.mode = MODE.NORMAL;
-      syncDom(false);
-    }
-    updateBar();
+    toggleEnabled();
     return;
   }
 
