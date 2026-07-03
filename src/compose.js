@@ -1045,9 +1045,10 @@
 
   // ---------------------------------------------------------------- init
 
-  // Diagnostic: dump the live DOM and the linear model to the console. Call
-  // `thundervim_dump()` from the Browser Console (with the compose document as
-  // the target frame) to capture ground truth for a round-trip bug report.
+  // Diagnostic: dump the live DOM and the linear model. Copies the JSON to the
+  // clipboard (content-script console.log is not visible in Thunderbird's Error
+  // Console) and flashes a confirmation in the status bar. Triggered by
+  // Ctrl-Alt-D; see onKeydown.
   function dumpState(label) {
     var b = readBuffer();
     var info = {
@@ -1058,7 +1059,21 @@
       caret: b ? b.caret : null,
       html: document.body ? document.body.innerHTML : null,
     };
-    if (typeof console !== "undefined") console.log("thundervim dump", info);
+    var json = JSON.stringify(info, null, 2);
+    if (typeof console !== "undefined" && console.log)
+      console.log("thundervim dump", info);
+    var msg = "-- thundervim: dump copied to clipboard --";
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(null, function () {});
+      } else {
+        msg = "-- thundervim: clipboard unavailable (see console) --";
+      }
+    } catch (err) {
+      msg = "-- thundervim: clipboard failed (see console) --";
+    }
+    setBar(msg, "", "normal");
+    setTimeout(updateBar, 2500);
     return info;
   }
   if (typeof window !== "undefined") window.thundervim_dump = dumpState;
