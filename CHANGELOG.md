@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.2
+
+This release focuses on making Thundervim feel native in Thunderbird while keeping outgoing mail clean.
+
+### Added
+
+- **Configurable preferences UI** for startup mode, enable/disable behavior, the toggle chord, optional insert-mode escape sequence, `shiftwidth`, and `textwidth`.
+- **Compose toolbar button** with a compact `TV` label and a one-character status badge. Click it to enable or disable Thundervim in the current compose window.
+- **Production packaging** with TypeScript, esbuild, a Makefile, add-on icons, an MIT license, a stable extension ID, CI, and add-on linting.
+
+### Fixed
+
+- **The vim status line is visible again without leaking into sent mail.** The mode/ruler line is shown at the bottom of the compose window, removed before send, and scrubbed again via `compose.onBeforeSend` using an invisible Thundervim marker.
+- **Plain-text emails no longer contain status footer text** such as `-- INSERT --`, `1,6 All`, or similar ruler fragments.
+- **Preferences layout in Thunderbird is compact and valid**, avoiding the oversized padding caused by malformed options-page markup.
+- **Toolbar badge clipping** is avoided by using short one-character mode badges (`I`, `N`, `V`, `L`, `/`).
+
 ## v0.3.0
 
 A sentence motion plus a major rich-text (HTML) reliability fix.
