@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "description": "Vim keybindings for editing email in the Thunderbird compose window.",
+  "author": "Matthias Endler",
+  "license": "MIT",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",

@@ -138,3 +138,7 @@ classic escape shortcut as a fallback.
 Bug reports, ideas, and pull requests are welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the architecture, how to run the tests,
 and how to build the package.
+
+## License
+
+[MIT](LICENSE) © Matthias Endler
