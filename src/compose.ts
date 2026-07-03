@@ -853,73 +853,32 @@ function beforeSendCleanup(): void {
 // ----------------------------------------------------------- status bar
 
 function ensureBar(): HTMLElement {
-  // Remove status bars from older versions that lived in the light DOM. Even
-  // textless canvases there appear to be unsafe in Thunderbird's send encoder,
-  // and CSS/generated text definitely leaks into plain-text messages.
-  for (const old of Array.from(
-    document.querySelectorAll("#thundervim-status"),
-  )) {
-    old.remove();
-  }
+  // Remove shadow-host status bars from the previous attempt. Thunderbird's
+  // compose editor did not reliably paint the shadow contents.
+  document.getElementById("thundervim-status-host")?.remove();
 
-  let host = document.getElementById("thundervim-status-host");
-  if (!host) {
-    host = document.createElement("div");
-    host.id = "thundervim-status-host";
-    host.setAttribute("contenteditable", "false");
-    (document.documentElement || document.body).appendChild(host);
-  }
-  // Keep the light DOM host empty and textless (safe for send serialization),
-  // but make the host itself the fixed viewport container. Some Thunderbird
-  // compose builds do not reliably paint position:fixed descendants inside an
-  // otherwise layoutless shadow host.
-  host.style.cssText =
-    "position:fixed;left:0;right:0;bottom:0;z-index:2147483647;" +
-    "display:block;box-sizing:border-box;pointer-events:none;";
-
-  const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
-  let bar = shadow.getElementById("thundervim-status");
+  let bar = document.getElementById("thundervim-status");
   if (!bar) {
-    shadow.replaceChildren();
-    const style = document.createElement("style");
-    style.textContent = `
-      #thundervim-status {
-        box-sizing: border-box;
-        width: 100%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 2px 8px;
-        font-family: Menlo, Monaco, "DejaVu Sans Mono", monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        letter-spacing: 0.02em;
-        color: #e6e6e6;
-        background: #202225;
-        border-top: 1px solid #000;
-        pointer-events: none;
-        user-select: none;
-        white-space: pre;
-      }
-      #thundervim-status canvas { display: block; }
-      #thundervim-status .tv-right { margin-left: 16px; }
-      #thundervim-status[data-mode="insert"] { background: #2e7d32; color: #fff; }
-      #thundervim-status[data-mode="normal"] { background: #202225; color: #e6e6e6; }
-      #thundervim-status[data-mode="visual"],
-      #thundervim-status[data-mode="visual-line"] { background: #6a1b9a; color: #fff; }
-      #thundervim-status[data-mode="off"] { background: #4a4a4a; color: #bdbdbd; }
-      #thundervim-status[data-mode="search"] { background: #202225; color: #ffd54f; }
-    `;
     bar = document.createElement("div");
     bar.id = "thundervim-status";
+    bar.setAttribute("contenteditable", "false");
+    (document.documentElement || document.body).appendChild(bar);
+  }
+
+  // The visible bar uses canvases, not text nodes or generated text. The
+  // compose-send-message handler removes the whole bar before Thunderbird
+  // serializes the document for sending.
+  if (
+    !(bar.querySelector(".tv-left") instanceof HTMLCanvasElement) ||
+    !(bar.querySelector(".tv-right") instanceof HTMLCanvasElement)
+  ) {
+    bar.replaceChildren();
     const left = document.createElement("canvas");
     left.className = "tv-left";
     const right = document.createElement("canvas");
     right.className = "tv-right";
     bar.appendChild(left);
     bar.appendChild(right);
-    shadow.appendChild(style);
-    shadow.appendChild(bar);
   }
   return bar;
 }
