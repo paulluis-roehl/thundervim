@@ -1,7 +1,12 @@
 /* Thundervim mode status bar.
  *
- * The bar is attached to <html> (outside <body>) so it never becomes part of
- * the composed message. It is fixed to the bottom of the editor viewport. */
+ * The bar is attached to <html> (outside <body>). That keeps it out of the
+ * HTML message body, but Thunderbird's plain-text send path serializes the
+ * whole document and *would* emit any visible text nodes it finds. So the
+ * bar carries no real text: the mode label and ruler are rendered as CSS
+ * generated content from data-* attributes below, which the serializer never
+ * writes into the outgoing message. It is fixed to the bottom of the editor
+ * viewport. */
 
 #thundervim-status {
     position: fixed;
@@ -23,6 +28,14 @@
     border-top: 1px solid #000;
     pointer-events: none;
     user-select: none;
+    white-space: pre;
+}
+
+/* The label and ruler live in data-text attributes (set by the adapter) and
+ * are drawn as generated content, so no serializable text node ever exists. */
+#thundervim-status .tv-left::before,
+#thundervim-status .tv-right::before {
+    content: attr(data-text);
     white-space: pre;
 }
 

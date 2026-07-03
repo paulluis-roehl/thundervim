@@ -867,8 +867,11 @@ function ensureBar(): HTMLElement {
 }
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
-  bar.querySelector(".tv-left")!.textContent = leftText;
-  bar.querySelector(".tv-right")!.textContent = rightText || "";
+  // Store the text in data-* attributes and render it via CSS generated
+  // content (see statusbar.css). Using real text nodes here would leak the
+  // status line into plain-text sends, which serialize the whole document.
+  bar.querySelector(".tv-left")!.setAttribute("data-text", leftText);
+  bar.querySelector(".tv-right")!.setAttribute("data-text", rightText || "");
   bar.setAttribute("data-mode", mode);
   render();
 }
