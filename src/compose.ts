@@ -865,25 +865,54 @@ function ensureBar(): HTMLElement {
     (document.documentElement || document.body).appendChild(bar);
   }
 
-  // Use ordinary spans for maximum compatibility with Thunderbird's compose
-  // editor. The compose-send-message handler removes the whole bar before
-  // Thunderbird serializes the document for sending.
-  if (!bar.querySelector(".tv-left") || !bar.querySelector(".tv-right")) {
+  // Render the status labels as images, not DOM text or CSS generated text.
+  // Thunderbird's plain-text serializer extracts visible text from this compose
+  // document, but an <img alt=""> has no text to append to the outgoing mail.
+  if (
+    !(bar.querySelector(".tv-left") instanceof HTMLImageElement) ||
+    !(bar.querySelector(".tv-right") instanceof HTMLImageElement)
+  ) {
     bar.replaceChildren();
-    const left = document.createElement("span");
+    const left = document.createElement("img");
     left.className = "tv-left";
-    const right = document.createElement("span");
+    left.alt = "";
+    const right = document.createElement("img");
     right.className = "tv-right";
+    right.alt = "";
     bar.appendChild(left);
     bar.appendChild(right);
   }
   return bar;
 }
+function svgStatusImage(text: string, color: string, opacity = 1): string {
+  const font = `12px Menlo, Monaco, "DejaVu Sans Mono", monospace`;
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d")!;
+  ctx.font = font;
+  const width = Math.max(1, Math.ceil(ctx.measureText(text || " ").width + 2));
+  const height = 18;
+  const escaped = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><text x="0" y="9" dominant-baseline="middle" font-family="Menlo, Monaco, DejaVu Sans Mono, monospace" font-size="12" fill="${color}" fill-opacity="${opacity}">${escaped}</text></svg>`;
+  return "data:image/svg+xml," + encodeURIComponent(svg);
+}
+function setStatusImage(img: HTMLImageElement, text: string): void {
+  const bar = img.parentElement!;
+  const style = getComputedStyle(bar);
+  img.src = svgStatusImage(
+    text,
+    style.color || "#e6e6e6",
+    img.classList.contains("tv-right") ? 0.85 : 1,
+  );
+}
 function setBar(leftText: string, rightText: string, mode: string): void {
   const bar = ensureBar();
   bar.setAttribute("data-mode", mode);
-  bar.querySelector(".tv-left")!.textContent = leftText;
-  bar.querySelector(".tv-right")!.textContent = rightText || "";
+  setStatusImage(bar.querySelector(".tv-left")!, leftText);
+  setStatusImage(bar.querySelector(".tv-right")!, rightText || "");
   render();
 }
 function modeLabel(): string {

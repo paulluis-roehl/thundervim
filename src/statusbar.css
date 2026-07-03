@@ -1,7 +1,8 @@
 /* Thundervim overlays.
  *
- * The mode status bar is visible while editing and is removed on
- * compose-send-message before Thunderbird serializes the document.
+ * The mode status bar is visible while editing, but its labels are rendered as
+ * textless <img alt=""> data URLs so Thunderbird's plain-text serializer has no
+ * DOM/CSS text to append to sent mail.
  */
 
 #thundervim-status {
@@ -27,9 +28,13 @@
     white-space: pre;
 }
 
+#thundervim-status img {
+    display: block;
+    min-height: 18px;
+}
+
 #thundervim-status .tv-right {
-    padding-left: 16px;
-    opacity: 0.85;
+    margin-left: 16px;
 }
 
 #thundervim-status[data-mode="insert"] {
