@@ -1,29 +1,40 @@
 :root {
     color-scheme: light dark;
-    font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: Canvas;
+    font:
+        14px/1.4 system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    background: transparent;
     color: CanvasText;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body {
     margin: 0;
+    padding: 0;
+    background: transparent;
 }
 
 main {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 28px;
+    max-width: 760px;
+    padding: 16px 18px 18px;
 }
 
 .hero {
     display: flex;
     align-items: center;
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 12px;
+    margin: 0 0 14px;
 }
 
 .hero img {
-    border-radius: 14px;
+    flex: 0 0 auto;
+    border-radius: 10px;
 }
 
 h1,
@@ -33,41 +44,44 @@ p {
 }
 
 h1 {
-    font-size: 28px;
-    line-height: 1.1;
+    font-size: 20px;
+    line-height: 1.15;
 }
 
 h2 {
-    font-size: 16px;
-    margin-bottom: 14px;
+    font-size: 15px;
+    line-height: 1.2;
+    margin-bottom: 10px;
 }
 
 .hero p,
-.hint {
-    color: color-mix(in srgb, CanvasText 72%, Canvas);
+.hint,
+#status {
+    color: color-mix(in srgb, CanvasText 70%, transparent);
 }
 
 form {
     display: grid;
-    gap: 18px;
+    gap: 12px;
 }
 
 section {
-    border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
-    border-radius: 12px;
-    padding: 18px;
-    background: color-mix(in srgb, Canvas 94%, CanvasText);
+    border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+    border-radius: 10px;
+    padding: 14px;
+    background: color-mix(in srgb, Canvas 92%, CanvasText 8%);
 }
 
 .row {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-top: 12px;
+    gap: 12px;
+    margin-top: 10px;
 }
 
 .checkbox {
+    display: flex;
     justify-content: flex-start;
 }
 
@@ -75,43 +89,44 @@ section {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px 18px;
-    margin-top: 12px;
+    gap: 10px 16px;
+    margin-top: 10px;
 }
 
+.chord label,
 .key-field {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 7px;
 }
 
 input[type="text"],
 input[type="number"],
 select {
-    box-sizing: border-box;
-    min-width: 120px;
-    padding: 6px 8px;
-    border: 1px solid color-mix(in srgb, CanvasText 26%, Canvas);
-    border-radius: 8px;
+    min-width: 110px;
+    padding: 5px 8px;
+    border: 1px solid color-mix(in srgb, CanvasText 28%, transparent);
+    border-radius: 7px;
     background: Canvas;
     color: CanvasText;
     font: inherit;
 }
 
 #toggle-key {
-    min-width: 48px;
-    width: 48px;
+    min-width: 44px;
+    width: 44px;
     text-align: center;
 }
 
 .hint {
-    margin-top: 8px;
+    margin-top: 6px;
     font-size: 13px;
 }
 
 kbd,
 code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 footer {
@@ -119,12 +134,13 @@ footer {
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    padding-top: 2px;
 }
 
 button {
-    padding: 7px 12px;
-    border: 1px solid color-mix(in srgb, CanvasText 24%, Canvas);
-    border-radius: 8px;
+    padding: 6px 11px;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 7px;
     background: color-mix(in srgb, AccentColor 18%, Canvas);
     color: CanvasText;
     font: inherit;
@@ -137,5 +153,20 @@ button:hover {
 
 #status {
     min-height: 1.4em;
-    color: color-mix(in srgb, CanvasText 72%, Canvas);
+}
+
+@media (max-width: 520px) {
+    main {
+        padding: 12px;
+    }
+
+    .row {
+        grid-template-columns: 1fr;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+        width: 100%;
+    }
 }
