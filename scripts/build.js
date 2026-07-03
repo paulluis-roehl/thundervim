@@ -29,6 +29,15 @@ async function copyAssets() {
     path.join(root, "src", "statusbar.css"),
     path.join(pkgDir, "statusbar.css"),
   );
+
+  const iconsDir = path.join(pkgDir, "assets", "icons");
+  await mkdir(iconsDir, { recursive: true });
+  for (const size of [48, 96, 128]) {
+    await copyFile(
+      path.join(root, "assets", "icons", `icon-${size}.png`),
+      path.join(iconsDir, `icon-${size}.png`),
+    );
+  }
 }
 
 const options = {
@@ -48,13 +57,15 @@ await copyAssets();
 if (watch) {
   const ctx = await esbuild.context(options);
   await ctx.watch();
-  console.log(`watching… (load ${path.relative(root, pkgDir)}/ in Thunderbird)`);
+  console.log(
+    `watching… (load ${path.relative(root, pkgDir)}/ in Thunderbird)`,
+  );
 } else {
   await esbuild.build(options);
   const xpi = path.join(root, "dist", `thundervim-${version}.xpi`);
   execFileSync(
     "zip",
-    ["-r", "-X", xpi, "manifest.json", "compose.js", "statusbar.css"],
+    ["-r", "-X", xpi, "manifest.json", "compose.js", "statusbar.css", "assets"],
     { cwd: pkgDir, stdio: "ignore" },
   );
   console.log(`Built ${path.relative(root, xpi)}`);

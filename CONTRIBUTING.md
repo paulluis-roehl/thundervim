@@ -54,6 +54,10 @@ thundervim/
 ├── manifest.json              MV3 manifest; injects the compose script + CSS
 ├── package.json               npm scripts (typecheck, test, check, build)
 ├── tsconfig.json              strict TypeScript config
+├── assets/
+│   ├── logo.png               source logo
+│   ├── logo.svg               editable logo source
+│   └── icons/                 resized PNG icons packaged in the .xpi
 ├── src/
 │   ├── engine.ts              pure vim state machine (no DOM)
 │   ├── compose.ts             compose-window adapter (DOM <-> engine)
@@ -122,8 +126,8 @@ npm run build
 This bundles `src/compose.ts` + `src/engine.ts` into a single content script and
 produces both a loadable, unpacked package at `dist/thundervim/` and
 `dist/thundervim-<version>.xpi` (a zip with `manifest.json` at the root plus the
-bundled `compose.js` and `statusbar.css`, and nothing else — no tests, TypeScript
-sources, or tooling). The `.xpi` is what you submit to
+bundled `compose.js`, `statusbar.css`, and packaged icons under `assets/icons/`;
+no tests, TypeScript sources, or tooling). The `.xpi` is what you submit to
 [addons.thunderbird.net](https://addons.thunderbird.net) or load temporarily.
 
 ## Continuous integration
