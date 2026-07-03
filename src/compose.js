@@ -216,6 +216,31 @@
     }
   }
 
+  // Remove completely-empty block elements. A cross-boundary deleteContents can
+  // leave one behind (e.g. an empty <p></p> after a join), whose synthetic
+  // newline makes readBuffer disagree with the intended text. Returns true if it
+  // removed anything. Empty *lines* keep a <br>, so they are not touched here.
+  function pruneEmptyBlocks() {
+    var body = document.body;
+    if (!body) return false;
+    var removed = false;
+    var els = body.querySelectorAll("*");
+    for (var i = els.length - 1; i >= 0; i--) {
+      var el = els[i];
+      if (
+        BLOCK[el.tagName] &&
+        el.childNodes.length === 0 &&
+        el.id !== "thundervim-status" &&
+        el.id !== "thundervim-cursor" &&
+        el.id !== "thundervim-highlights"
+      ) {
+        el.parentNode.removeChild(el);
+        removed = true;
+      }
+    }
+    return removed;
+  }
+
   // Bring the DOM in line with `newText` by applying only the changed span, so
   // untouched markup (quote levels, bold, links, ...) is preserved. Falls back
   // to a full flat rewrite only if a general edit can't reproduce newText.
@@ -256,6 +281,17 @@
       if (check && check.text === newText) {
         if (placeCaret) setNativeCaret(caret);
         return;
+      }
+      // The delete may have left an empty block behind (its extra newline is why
+      // the check failed). Drop empty leftovers and retry before the destructive
+      // flat rewrite, so a join merges only the two lines instead of flattening
+      // every block in the message.
+      if (pruneEmptyBlocks()) {
+        check = readBuffer();
+        if (check && check.text === newText) {
+          if (placeCaret) setNativeCaret(caret);
+          return;
+        }
       }
     }
     if (typeof console !== "undefined" && console.warn) {
