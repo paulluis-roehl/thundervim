@@ -3,6 +3,12 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to submit to Thunderbird Add-ons
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,8 +17,12 @@ jobs:
   release:
     name: Build and publish release
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -21,13 +31,15 @@ jobs:
       - run: npm ci
 
       - name: Verify tag matches manifest version
+        id: version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${RELEASE_TAG#v}"
           manifest=$(node -p "require('./manifest.json').version")
           if [ "$tag" != "$manifest" ]; then
             echo "::error::Tag v$tag does not match manifest.json version $manifest"
             exit 1
           fi
+          echo "version=$manifest" >> "$GITHUB_OUTPUT"
 
       - name: Type-check
         run: npm run typecheck
@@ -44,8 +56,26 @@ jobs:
       - name: Add-on linter
         run: npx addons-linter dist/thundervim
 
+      - name: Package source code for review
+        run: |
+          git archive --format=zip \
+            --output="dist/thundervim-${{ steps.version.outputs.version }}-sources.zip" \
+            HEAD
+
       - name: Publish GitHub release with the .xpi attached
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.xpi
           generate_release_notes: true
+
+      - name: Submit to Thunderbird Add-ons
+        uses: kewisch/action-web-ext@v2
+        with:
+          cmd: sign
+          source: dist/thundervim-${{ steps.version.outputs.version }}.xpi
+          sourceCode: dist/thundervim-${{ steps.version.outputs.version }}-sources.zip
+          channel: listed
+          apiUrlPrefix: https://addons.thunderbird.net/api/v4
+          apiKey: ${{ secrets.ATN_SIGN_KEY }}
+          apiSecret: ${{ secrets.ATN_SIGN_SECRET }}
