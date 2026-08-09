@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.4
+
+This release prevents send-time cleanup from corrupting outgoing messages.
+
+### Fixed
+
+- **Plain-text URLs at the end of a message are preserved.** Legacy status cleanup now recognizes only complete status lines instead of mistaking the `//` in a URL for a Vim search prompt.
+- **HTML messages retain their formatting and line breaks when sent.** Cleanup now removes only Thundervim's own status elements and never replaces the message body with flattened text.
+
 ## v0.3.3
 
 Multi-cursor editing and platform-native shortcuts.
