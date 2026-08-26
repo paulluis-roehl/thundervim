@@ -48,24 +48,28 @@ export function scrubHtmlBody(
 }
 
 export function scrubDetails(details: ComposeDetails): ComposeDetails | null {
-  const cleaned: ComposeDetails = {};
-  let changed = false;
-  if (typeof details.plainTextBody === "string") {
+  const usePlainTextBody =
+    details.isPlainText === true ||
+    (details.isPlainText === undefined &&
+      typeof details.plainTextBody === "string" &&
+      typeof details.body !== "string");
+  const useHtmlBody =
+    details.isPlainText === false ||
+    (details.isPlainText === undefined &&
+      typeof details.body === "string" &&
+      typeof details.plainTextBody !== "string");
+
+  if (usePlainTextBody && typeof details.plainTextBody === "string") {
     const plainTextBody = scrubPlainTextBody(details.plainTextBody);
-    if (plainTextBody !== details.plainTextBody) {
-      cleaned.plainTextBody = plainTextBody;
-      changed = true;
-    }
+    return plainTextBody === details.plainTextBody
+      ? null
+      : { isPlainText: true, plainTextBody };
   }
-  if (typeof details.body === "string") {
+
+  if (useHtmlBody && typeof details.body === "string") {
     const body = scrubHtmlBody(details.body);
-    if (body !== details.body) {
-      cleaned.body = body;
-      changed = true;
-    }
+    return body === details.body ? null : { isPlainText: false, body };
   }
-  if (changed && details.isPlainText !== undefined) {
-    cleaned.isPlainText = details.isPlainText;
-  }
-  return changed ? cleaned : null;
+
+  return null;
 }

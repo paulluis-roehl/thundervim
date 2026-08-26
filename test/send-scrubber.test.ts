@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert";
 import {
+  scrubDetails,
   scrubHtmlBody,
   scrubPlainTextBody,
   type HtmlParser,
@@ -21,6 +22,49 @@ test("plain-text scrubbing preserves a URL on the final line", () => {
   ].join("\n");
 
   assert.strictEqual(scrubPlainTextBody(body), body);
+});
+
+test("plain-text scrubbing preserves wrapped quoted replies", () => {
+  const body = [
+    "Thanks for your message.",
+    "",
+    "On 1 January, Example Sender wrote:",
+    "> This is the first quoted paragraph, wrapped across multiple",
+    "> lines as it appeared in the compose window.",
+    ">",
+    "> This is another quoted paragraph with a link:",
+    "> https://www.example.com/article",
+    ">",
+    "> Best",
+  ].join("\r\n");
+  const outgoing = `${body}\r\n${STATUS_MARKER}-- INSERT --${STATUS_MARKER}1,1 All`;
+
+  assert.strictEqual(scrubPlainTextBody(outgoing), body);
+});
+
+test("plain-text details never rewrite Thunderbird's HTML mirror", () => {
+  const plainTextBody = [
+    "Thanks for your message.",
+    "",
+    "On 1 January, Example Sender wrote:",
+    "> First quoted line",
+    "> Second quoted line",
+  ].join("\r\n");
+  const details = {
+    isPlainText: true,
+    plainTextBody: `${plainTextBody}\r\n${STATUS_MARKER}-- NORMAL --`,
+    body: [
+      "<div>Thanks for your message.</div>",
+      '<blockquote type="cite"><div>First quoted line</div>',
+      "<div>Second quoted line</div></blockquote>",
+      '<div id="thundervim-status">status</div>',
+    ].join(""),
+  };
+
+  assert.deepStrictEqual(scrubDetails(details), {
+    isPlainText: true,
+    plainTextBody,
+  });
 });
 
 test("plain-text scrubbing removes a legacy status only as a complete final line", () => {
@@ -66,17 +110,34 @@ test("HTML without Thundervim nodes is returned unchanged", () => {
   assert.strictEqual(readTextContent, false);
 });
 
-test("HTML scrubbing removes only the Thundervim status node", () => {
-  const body =
-    '<div><strong>Hello</strong><br>there</div><div id="thundervim-status">status</div>';
-  const cleaned = "<div><strong>Hello</strong><br>there</div>";
+test("HTML scrubbing preserves quoted reply structure", () => {
+  const cleaned = [
+    "<div>Thanks for your message.</div>",
+    '<div class="moz-cite-prefix">On 1 January, Example Sender wrote:</div>',
+    '<blockquote type="cite">',
+    "<div>First quoted line</div>",
+    "<div>Second quoted line</div>",
+    "<br>",
+    "<div>Another quoted paragraph</div>",
+    "</blockquote>",
+  ].join("");
+  const body = `${cleaned}<div id="thundervim-status">status</div>`;
   let removed = false;
+  let readTextContent = false;
   const parser: HtmlParser = {
     parseFromString() {
       return {
         body: {
           get innerHTML() {
             return removed ? cleaned : body;
+          },
+          get textContent() {
+            readTextContent = true;
+            return [
+              "Thanks for your message.",
+              "On 1 January, Example Sender wrote:",
+              "First quoted lineSecond quoted lineAnother quoted paragraph",
+            ].join("");
           },
         },
         getElementById(id) {
@@ -93,4 +154,5 @@ test("HTML scrubbing removes only the Thundervim status node", () => {
 
   assert.strictEqual(scrubHtmlBody(body, parser), cleaned);
   assert.strictEqual(removed, true);
+  assert.strictEqual(readTextContent, false);
 });

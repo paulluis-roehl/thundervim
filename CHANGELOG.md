@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.5
+
+This release prevents plaintext replies from losing their quoted-message formatting when sent.
+
+### Fixed
+
+- **Wrapped quoted replies retain their `>` prefixes, line breaks, and paragraph spacing.** Send-time cleanup now modifies only `plainTextBody` for plaintext messages and only the HTML `body` for HTML messages, as required by Thunderbird's compose API.
+
 ## v0.3.4
 
 This release prevents send-time cleanup from corrupting outgoing messages.

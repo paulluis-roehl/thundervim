@@ -1,6 +1,6 @@
 {
   "name": "thundervim",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "type": "module",
   "description": "Vim keybindings for editing email in the Thunderbird compose window.",
