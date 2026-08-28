@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.3.6
+
+This release keeps Vim and Thunderbird's native undo histories from interfering with each other.
+
+### Fixed
+
+- **Mixing Vim `u` / `Ctrl-r` with native `Cmd-Z` / `Ctrl-Z` no longer restores stale text.** Native text changes start a fresh Vim history boundary, while formatting-only actions preserve Vim history.
+- **Unrelated application shortcuts no longer disturb Visual mode.** Send, Save, Find, and other untracked shortcuts pass directly to Thunderbird without selection or history side effects.
+
 ## v0.3.5
 
 This release prevents plaintext replies from losing their quoted-message formatting when sent.

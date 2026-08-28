@@ -15,6 +15,7 @@
 //   createState(text, cursor)      -> state
 //   handleKey(state, ev)           -> { state, handled }
 //   syncFromEditor(state, text, c) -> state   (call when returning from Insert)
+//   rebaseFromEditor(state, text, c) -> state (external text edit; resets history)
 //
 // `ev` is a normalized key: { key, shift, ctrl, alt, meta }.
 
@@ -2265,5 +2266,28 @@ export function syncFromEditor(
 ): State {
   state.text = text;
   state.cursor = clampNormal(text, cursor);
+  return state;
+}
+
+// Adopt a text change performed by Thunderbird's native editor. Gecko and Vim
+// maintain independent undo managers, so snapshots from before an external
+// text edit are no longer a valid linear history for the new buffer. Rich-text
+// formatting changes do not call this because their linear text is unchanged.
+export function rebaseFromEditor(
+  state: State,
+  text: string,
+  cursor: number,
+): State {
+  const changed = text !== state.text;
+  syncFromEditor(state, text, cursor);
+  if (!changed) return state;
+
+  state.undoStack = [];
+  state.redoStack = [];
+  state.anchor = null;
+  state.desiredCol = null;
+  state._seq = [];
+  state._insertPending = null;
+  resetPending(state);
   return state;
 }

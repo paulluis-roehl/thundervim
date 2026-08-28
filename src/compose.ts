@@ -20,11 +20,13 @@ import {
   setSearch,
   computeMatches,
   syncFromEditor,
+  rebaseFromEditor,
   clampNormal,
   lineStartAt,
   lineEndAt,
 } from "./engine.ts";
 import { DEFAULT_CONFIG, loadConfig } from "./config.ts";
+import { nativeEditorCommand } from "./shortcuts.ts";
 import type { State, Mode, SearchInfo } from "./engine.ts";
 import type { ThundervimConfig } from "./config.ts";
 
@@ -531,27 +533,29 @@ function syncDom(placeCaret: boolean): void {
   ensureTrailingPad(state.text);
 }
 
-// After the app handled a Cmd chord (paste/cut/undo) in Normal mode, pull the
-// engine's buffer back in line with the DOM. A pure formatting or copy command
-// leaves the text unchanged, so we no-op and keep the current mode/cursor.
+// After the app handled a native paste/cut/undo in Normal mode, pull the
+// engine's buffer back in line with the DOM. Gecko's undo manager is separate
+// from Vim's, so a native text change starts a fresh Vim-history baseline. A
+// formatting or copy command leaves the text unchanged and preserves history.
 function resyncFromDom(): void {
   const b = readBuffer();
   if (!b || b.text === state.text) return;
-  syncFromEditor(state, b.text, b.caret);
+  rebaseFromEditor(state, b.text, b.caret);
   state.mode = MODE.NORMAL;
+  extraCursors = [];
   syncDom(false);
   updateBar();
 }
 
-// After a Cmd chord applied to the vim visual selection: a formatting/copy
-// command leaves the text intact (land on the selection start, like a vim
-// operator), while a paste/cut replaces it (resync from the DOM). Either way
-// we drop back to Normal mode and collapse the native selection.
-function afterVisualMeta(caretOffset: number): void {
+// After a native command applied to the Vim visual selection: formatting/copy
+// leaves the text intact (land on the selection start, like a Vim operator),
+// while paste/cut replaces it and rebases history. Either way, return to Normal
+// mode and collapse the native selection.
+function afterVisualNativeCommand(caretOffset: number): void {
   const b = readBuffer();
   if (!b) return;
   if (b.text !== state.text) {
-    syncFromEditor(state, b.text, b.caret);
+    rebaseFromEditor(state, b.text, b.caret);
   } else {
     state.text = b.text;
     const last = b.text.length > 0 ? b.text.length - 1 : 0;
@@ -559,6 +563,7 @@ function afterVisualMeta(caretOffset: number): void {
   }
   state.mode = MODE.NORMAL;
   state.anchor = null;
+  extraCursors = [];
   setNativeCaret(state.cursor);
   syncDom(false);
   updateBar();
@@ -1480,7 +1485,7 @@ function toggleEnabled(): void {
   enabled = !enabled;
   if (enabled) {
     const b = readBuffer();
-    syncFromEditor(state, b ? b.text : "", b ? b.caret : 0);
+    rebaseFromEditor(state, b ? b.text : "", b ? b.caret : 0);
     state.mode = MODE.NORMAL;
     syncDom(false);
   } else {
@@ -1565,24 +1570,23 @@ function onKeydown(e: KeyboardEvent): void {
     return;
   }
 
-  // Cmd (meta) chords belong to the application, not vim. macOS binds Cmd+B/
-  // I/U to Bold/Italic/Underline and Cmd+C/V/X/Z to clipboard & undo; vim has
-  // no Cmd bindings. Never swallow these in any mode, or e.g. Cmd+B is read as
-  // the `b` motion and the formatting command never reaches Thunderbird.
-  if (ev.meta) {
+  // Reconcile native editor commands afterward so Gecko's independent undo
+  // manager cannot leave stale Vim snapshots behind. Other primary-modifier
+  // shortcuts (Send, Save, Find, etc.) pass through without mode side effects.
+  const nativeCommand = nativeEditorCommand(ev, isMacOS());
+  if (nativeCommand) {
     const vis = state.mode === MODE.VISUAL || state.mode === MODE.VLINE;
     if (vis) {
-      // The visual selection is only an overlay; the native selection stays
-      // collapsed. Materialize it now so the command acts on the highlighted
-      // text, then reconcile on the next tick.
       const sr = selectionRange();
       const caret = sr ? sr.start : state.cursor;
-      if (sr) selectRangeInDom(sr.start, sr.end);
+      // Formatting and clipboard commands act on the Vim Visual range. Native
+      // history commands operate on the editor history and need no selection.
+      if (nativeCommand === "selection" && sr)
+        selectRangeInDom(sr.start, sr.end);
       setTimeout(function () {
-        afterVisualMeta(caret);
+        afterVisualNativeCommand(caret);
       }, 0);
     } else if (state.mode !== MODE.INSERT) {
-      // A native edit (paste/cut/undo) can change the buffer; resync after.
       setTimeout(resyncFromDom, 0);
     }
     return;

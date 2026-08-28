@@ -256,6 +256,31 @@ test("u undoes and Ctrl-r redoes a delete", () => {
   assert.strictEqual(s.text, "ello");
 });
 
+test("native editor rebase clears stale Vim undo and redo history", () => {
+  const s = normal("abc", 0);
+  feed(s, "xx");
+  feed(s, "u");
+  assert.strictEqual(s.text, "bc");
+  assert.strictEqual(s.undoStack.length, 1);
+  assert.strictEqual(s.redoStack.length, 1);
+
+  vim.rebaseFromEditor(s, "native text", 11);
+  assert.strictEqual(s.undoStack.length, 0);
+  assert.strictEqual(s.redoStack.length, 0);
+  feed(s, "u");
+  assert.strictEqual(s.text, "native text");
+  feed(s, ["<C-r>"]);
+  assert.strictEqual(s.text, "native text");
+});
+
+test("text-equal editor rebase preserves Vim undo history", () => {
+  const s = normal("abc", 0);
+  feed(s, "x");
+  vim.rebaseFromEditor(s, "bc", 1);
+  feed(s, "u");
+  assert.strictEqual(s.text, "abc");
+});
+
 test("undo granularity is per command (dd is one undo)", () => {
   const s = normal("a\nb\nc", 0);
   feed(s, ["d", "d"]);
