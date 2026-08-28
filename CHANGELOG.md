@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.7
+
+### Changed
+
+- **Vim and Thunderbird now share one undo history.** Single-cursor Vim text commands are recorded as native editor transactions, so `u`, `Ctrl-r`, `Cmd-Z` / `Ctrl-Z`, native typing, paste, and formatting traverse the same timeline.
+- **Multi-cursor sessions retain Vim snapshot history.** Gecko cannot group disjoint ranges into one native transaction, so activating an extra cursor switches that compose window to the existing snapshot-based fallback.
+
 ## v0.3.6
 
 This release keeps Vim and Thunderbird's native undo histories from interfering with each other.

@@ -26,7 +26,10 @@ import {
   lineEndAt,
 } from "./engine.ts";
 import { DEFAULT_CONFIG, loadConfig } from "./config.ts";
-import { nativeEditorCommand } from "./shortcuts.ts";
+import {
+  nativeEditorCommand,
+  vimHistoryCommand,
+} from "./shortcuts.ts";
 import type { State, Mode, SearchInfo } from "./engine.ts";
 import type { ThundervimConfig } from "./config.ts";
 
@@ -93,6 +96,11 @@ let searchMsg = "";
 // edit. Thunderbird's editor inserts characters via `beforeinput`, which a
 // content-script `keydown` preventDefault() does not cancel on its own.
 let suppressInput = false;
+// Vim edits use Gecko transactions when available so native and Vim history
+// keys traverse one timeline. A failed transaction disables the bridge for the
+// rest of the compose session and falls back to the safe split-history path.
+let sharedNativeHistory = true;
+let applyingVimTransaction = false;
 // Extra cursor offsets for multi-cursor Insert-mode mirroring. The primary
 // cursor remains `state.cursor` so existing vim motions/operators keep working.
 let extraCursors: number[] = [];
@@ -279,6 +287,57 @@ function commonSuffixLen(a: string, b: string, prefix: number): number {
   )
     s++;
   return s;
+}
+
+function disableNativeHistoryBridge(): void {
+  if (!sharedNativeHistory) return;
+  sharedNativeHistory = false;
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(
+      "thundervim: native undo bridge unavailable; using split history",
+    );
+  }
+}
+
+// Submit a Vim text change to Gecko as one editor transaction. Unlike direct
+// DOM mutation, execCommand preserves contenteditable's native undo buffer.
+// The API is deprecated on the open web, but remains the only transaction API
+// exposed by Thunderbird's compose editor to a content script.
+function applyNativeTransaction(
+  oldText: string,
+  newText: string,
+  caret: number,
+  placeCaret: boolean,
+): boolean {
+  if (!sharedNativeHistory || oldText === newText) return false;
+  const p = commonPrefixLen(oldText, newText);
+  const sfx = commonSuffixLen(oldText, newText, p);
+  const qOld = oldText.length - sfx;
+  const repl = newText.slice(p, newText.length - sfx);
+  if (!selectRangeInDom(p, qOld)) {
+    disableNativeHistoryBridge();
+    return false;
+  }
+
+  let applied = false;
+  applyingVimTransaction = true;
+  try {
+    applied = repl
+      ? document.execCommand("insertText", false, repl)
+      : document.execCommand("delete", false);
+  } catch {
+    applied = false;
+  } finally {
+    applyingVimTransaction = false;
+  }
+
+  const current = readBuffer();
+  if (!applied || !current || current.text !== newText) {
+    disableNativeHistoryBridge();
+    return false;
+  }
+  if (placeCaret) setNativeCaret(caret);
+  return true;
 }
 
 // Collapse the native selection to a single linear offset.
@@ -529,7 +588,27 @@ function applyEdit(
 function syncDom(placeCaret: boolean): void {
   if (!document.body) return;
   const cur = readBuffer();
-  applyEdit(cur ? cur.text : "", state.text, state.cursor, placeCaret);
+  const oldText = cur ? cur.text : "";
+  const attemptedNative = sharedNativeHistory && oldText !== state.text;
+  if (
+    oldText !== state.text &&
+    !applyNativeTransaction(oldText, state.text, state.cursor, placeCaret)
+  ) {
+    // Re-read after a failed native attempt in case Gecko partially changed the
+    // DOM, then repair it through the existing formatting-preserving writer.
+    const latest = readBuffer();
+    applyEdit(
+      latest ? latest.text : oldText,
+      state.text,
+      state.cursor,
+      placeCaret,
+    );
+    // applyNativeTransaction materializes a real DOM selection before calling
+    // Gecko. Do not leave that failed edit range active in Normal mode.
+    if (attemptedNative && !placeCaret) setNativeCaret(state.cursor);
+  } else if (oldText === state.text && placeCaret) {
+    setNativeCaret(state.cursor);
+  }
   ensureTrailingPad(state.text);
 }
 
@@ -1080,6 +1159,7 @@ interface MultiEditOp {
   primary: boolean;
 }
 
+
 function targetColumn(pos: number): number {
   return pos - lineStartAt(state.text, pos);
 }
@@ -1108,21 +1188,22 @@ function offsetAtLineColumn(line: number, col: number): number | null {
   return clampNormal(state.text, Math.min(span.start + col, span.end));
 }
 
-function addVerticalCursor(delta: -1 | 1): void {
-  if (!enabled) return;
+function addVerticalCursor(delta: -1 | 1): boolean {
+  if (!enabled) return false;
   const cursors = allCursors();
   const base = delta > 0 ? cursors[cursors.length - 1] : cursors[0];
   const target = offsetAtLineColumn(
     cursorLine(base) + delta,
     targetColumn(base),
   );
-  if (target == null) return;
+  if (target == null) return false;
   extraCursors = cursors.filter((pos) => pos !== target);
   state.cursor = target;
   normalizeExtraCursors();
   setNativeCaret(state.cursor);
   render();
   updateBar();
+  return true;
 }
 
 function isMacOS(): boolean {
@@ -1320,6 +1401,8 @@ const TEXT_EDIT_INPUT_TYPES: Record<string, number> = {
 // beforeinput for the same key are cancelled without affecting later,
 // unrelated input events.
 function onInputEvent(e: Event): void {
+  if (applyingVimTransaction) return;
+
   if (
     e.type === "beforeinput" &&
     enabled &&
@@ -1512,6 +1595,56 @@ extensionApi()?.runtime?.onMessage?.addListener((message) => {
   }
 });
 
+function canRunNativeVimUndo(): boolean {
+  const p = state.pending;
+  return !p.op && !p.g && !p.replace && !p.textobj && !p.find;
+}
+
+function resyncInsertAfterNativeHistory(): void {
+  const b = readBuffer();
+  if (!b) return;
+  state.text = b.text;
+  state.cursor = b.caret;
+  // Native undo may change text lengths independently at every cursor. Keep the
+  // primary native caret and drop offsets that can no longer be reconstructed.
+  extraCursors = [];
+  updateBar();
+}
+
+
+function runNativeHistory(command: "undo" | "redo", count: number): void {
+  applyingVimTransaction = true;
+  try {
+    for (let i = 0; i < count; i++) {
+      if (!document.execCommand(command)) break;
+    }
+  } catch {
+    // A failed native history command is a no-op. Once native Vim edits have
+    // succeeded, falling back to the engine stack would traverse a stale copy.
+  } finally {
+    applyingVimTransaction = false;
+  }
+
+  const b = readBuffer();
+  if (b) rebaseFromEditor(state, b.text, b.caret);
+  state.mode = MODE.NORMAL;
+  state.anchor = null;
+  state.desiredCol = null;
+  state.pending.count = "";
+  state.pending.op = null;
+  state.pending.opCount = "";
+  state.pending.g = false;
+  state.pending.replace = false;
+  state.pending.textobj = null;
+  state.pending.find = null;
+  state._hadCount = false;
+  state._seq = [];
+  extraCursors = [];
+  ensureTrailingPad(state.text);
+  setNativeCaret(state.cursor);
+  updateBar();
+}
+
 function onKeydown(e: KeyboardEvent): void {
   suppressInput = false;
   const ev = normalize(e);
@@ -1529,7 +1662,15 @@ function onKeydown(e: KeyboardEvent): void {
     (isAddCursorBelow(ev) || isAddCursorAbove(ev))
   ) {
     swallow(e);
-    addVerticalCursor(isAddCursorBelow(ev) ? 1 : -1);
+    const added = addVerticalCursor(isAddCursorBelow(ev) ? 1 : -1);
+    // Gecko cannot group disjoint cursor ranges into one undo transaction.
+    // Switch only after a cursor was actually activated, before any
+    // multi-cursor command can mix the native and snapshot histories.
+    if (added && sharedNativeHistory) {
+      state.undoStack = [];
+      state.redoStack = [];
+      disableNativeHistoryBridge();
+    }
     return;
   }
 
@@ -1586,9 +1727,24 @@ function onKeydown(e: KeyboardEvent): void {
       setTimeout(function () {
         afterVisualNativeCommand(caret);
       }, 0);
-    } else if (state.mode !== MODE.INSERT) {
+    } else if (state.mode === MODE.INSERT) {
+      if (nativeCommand === "history")
+        setTimeout(resyncInsertAfterNativeHistory, 0);
+    } else {
       setTimeout(resyncFromDom, 0);
     }
+    return;
+  }
+
+  const historyCommand = vimHistoryCommand(ev);
+  const canRunHistory =
+    historyCommand &&
+    state.mode === MODE.NORMAL &&
+    (historyCommand === "redo" || canRunNativeVimUndo());
+  if (sharedNativeHistory && canRunHistory) {
+    const count = Math.max(1, Number.parseInt(state.pending.count, 10) || 1);
+    runNativeHistory(historyCommand, count);
+    swallow(e);
     return;
   }
 
@@ -1678,6 +1834,7 @@ function dumpState(label?: string) {
   const info = {
     label: label || "",
     mode: state.mode,
+    history: sharedNativeHistory ? "native" : "split",
     cursor: state.cursor,
     text: b ? b.text : null,
     caret: b ? b.caret : null,

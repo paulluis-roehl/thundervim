@@ -80,7 +80,7 @@ misbehaves on a complex message, please file an issue.
 | Case | `~` (with count), operators `gu` / `gU` / `g~` with motions/text objects (`gUiw`, `guap`), line forms `guu` / `gUU` / `g~~`, and Visual `u` / `U` / `~` |
 | Repeat change | `.` (repeats the last change, including typed text; a count substitutes the recorded one) |
 | Search | `/pat` `?pat` (smartcase), `*` / `#` (word under cursor), `n` / `N` to step; matches highlight while typing and persist until `Esc` |
-| Undo / redo | `u`, `Ctrl-r` (Vim history); native undo remains available as `Cmd-Z` / `Ctrl-Z` for Thunderbird edits |
+| Undo / redo | `u` or `Cmd-Z` / `Ctrl-Z` to undo; `Ctrl-r`, `Cmd-Shift-Z`, or `Ctrl-Y` to redo (shared Thunderbird history) |
 | Visual | `v`, `V`, then `d` / `c` / `y` on the selection |
 | Multi-cursor | macOS: `Cmd-Option-Down` / `Cmd-Option-Up`; Windows/Linux: `Ctrl-Alt-Down` / `Ctrl-Alt-Up`. Adds cursors below / above; vim motions and Insert-mode typing apply to all cursors; `Esc` in Normal mode clears extra cursors |
 | Leave insert | `Esc` |
@@ -114,13 +114,13 @@ leaves your machine.**
 - Any other `Ctrl` / `Cmd` / `Alt` chord passes straight through to Thunderbird,
   so **Send** (`Ctrl-Enter`), **Save** (`Ctrl-S`), and friends still work. The
   one exception is `Ctrl-r`, which is Vim redo.
-- Vim `u` / `Ctrl-r` and Thunderbird's native `Cmd-Z` / `Ctrl-Z` cannot share a
-  single undo manager: Vim tracks text snapshots, while Thunderbird also tracks
-  rich formatting. In Normal / Visual mode, a native text edit or undo starts a
-  fresh Vim history boundary, preventing stale snapshots from restoring
-  unrelated text. Insert mode remains native until `Esc`, when its net text
-  change is synchronized. Formatting-only native actions leave Vim history
-  intact.
+- Vim `u` / `Ctrl-r` and Thunderbird's native undo / redo shortcuts share the
+  compose editor's history. Vim text changes are recorded as native editor
+  transactions, so typing, paste, formatting, and Vim commands appear in one
+  timeline regardless of which shortcut you use.
+- Multi-cursor edits are the exception: Gecko cannot group disjoint DOM ranges
+  into one native transaction. Activating an extra cursor switches that compose
+  window to Vim snapshot history, so use `u` / `Ctrl-r` afterward.
 
 ## Configuration
 

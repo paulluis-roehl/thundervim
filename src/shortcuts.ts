@@ -7,6 +7,7 @@ export interface ShortcutKey {
 }
 
 export type NativeEditorCommand = "selection" | "history";
+export type VimHistoryCommand = "undo" | "redo";
 
 // Native commands that either depend on the editor selection or can change its
 // text/history. Other application shortcuts (Send, Save, Find, etc.) pass
@@ -22,5 +23,17 @@ export function nativeEditorCommand(
   const key = ev.key.toLowerCase();
   if (key === "z" || (!isMac && key === "y")) return "history";
   if (["b", "i", "u", "c", "v", "x"].includes(key)) return "selection";
+  return null;
+}
+
+// Vim's history keys are routed to Gecko when the compose adapter is using the
+// native editor's undo manager. Mode and pending-command checks remain the
+// adapter's responsibility because plain `u` is also a Visual command.
+export function vimHistoryCommand(
+  ev: ShortcutKey,
+): VimHistoryCommand | null {
+  if (ev.alt || ev.meta) return null;
+  if (!ev.ctrl && !ev.shift && ev.key === "u") return "undo";
+  if (ev.ctrl && ev.key.toLowerCase() === "r") return "redo";
   return null;
 }
