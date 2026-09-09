@@ -946,7 +946,9 @@ function domPointAt(target: number, preferNext = false): DomPoint | null {
         node: p,
         offset: Array.from<Node>(p.childNodes).indexOf(node) + 1,
       };
-      if (preferNext && target === acc) boundaryAtTarget = lastLeaf;
+      // Keep the point after a final <br>: an empty last line has no following
+      // text node that can otherwise resolve its cursor position.
+      if (target === acc) boundaryAtTarget = lastLeaf;
       return;
     }
     // Entering a block element emits a newline (unless one is already there),
@@ -1083,7 +1085,8 @@ function drawCursor(
   el.style.left = r.left + "px";
   el.style.top = r.top + "px";
   el.style.width = (!cr.collapsed && r.width > 0 ? r.width : 8) + "px";
-  el.style.height = (r.height > 0 ? r.height : 16) + "px";
+  const height = cr.collapsed ? Math.max(r.height, 16) : r.height || 16;
+  el.style.height = height + "px";
 }
 
 function updateExtraCursors(): void {
@@ -1123,6 +1126,29 @@ function updateCursor(): void {
   }
   drawCursor(el, cr);
   updateExtraCursors();
+}
+
+// Keep a Vim motion's fake cursor inside the compose viewport. The cursor is a
+// fixed overlay, so it cannot rely on native selection scrolling.
+function scrollCursorIntoView(): void {
+  const point = domPointAt(state.cursor);
+  const block = point ? nearestBlock(point.node) : null;
+  block?.scrollIntoView({ block: "nearest", inline: "nearest" });
+
+  const cr = cursorRect();
+  if (!cr) return;
+
+  const margin = 8;
+  const statusHeight =
+    document.getElementById("thundervim-status")?.getBoundingClientRect()
+      .height ?? 0;
+  const visibleTop = margin;
+  const visibleBottom = window.innerHeight - statusHeight - margin;
+  let delta = 0;
+  if (cr.rect.top < visibleTop) delta = cr.rect.top - visibleTop;
+  else if (cr.rect.bottom > visibleBottom)
+    delta = cr.rect.bottom - visibleBottom;
+  if (delta) window.scrollBy(0, delta);
 }
 
 // ------------------------------------------------ visual selection overlay
@@ -2121,6 +2147,7 @@ function onKeydown(e: KeyboardEvent): void {
   }
   syncDom(enteredInsert);
   updateBar();
+  if (!enteredInsert) scrollCursorIntoView();
   traceDebug("vim-command:end", {
     key: ev.key,
     enteredInsert,
