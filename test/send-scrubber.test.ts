@@ -110,6 +110,34 @@ test("HTML without Thundervim nodes is returned unchanged", () => {
   assert.strictEqual(readTextContent, false);
 });
 
+test("HTML scrubbing removes a legacy diagnostic overlay", () => {
+  const cleaned = "<p>Message text</p>";
+  const body = `${cleaned}<div id="thundervim-dump">diagnostic data</div>`;
+  let removed = false;
+  const parser: HtmlParser = {
+    parseFromString() {
+      return {
+        body: {
+          get innerHTML() {
+            return removed ? cleaned : body;
+          },
+        },
+        getElementById(id) {
+          if (id !== "thundervim-dump" || removed) return null;
+          return {
+            remove() {
+              removed = true;
+            },
+          };
+        },
+      };
+    },
+  };
+
+  assert.strictEqual(scrubHtmlBody(body, parser), cleaned);
+  assert.strictEqual(removed, true);
+});
+
 test("HTML scrubbing preserves quoted reply structure", () => {
   const cleaned = [
     "<div>Thanks for your message.</div>",

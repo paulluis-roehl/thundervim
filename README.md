@@ -137,6 +137,18 @@ Open **Add-ons and Themes → Extensions → Thundervim → Preferences** to con
 The escape sequence is off by default, matching vanilla vim where only `Esc`
 leaves Insert mode. Saved settings apply to newly opened compose windows.
 
+## Debugging
+
+To capture an editing problem, press `Ctrl-Option-D` on macOS or `Ctrl-Alt-D`
+on Windows/Linux before reproducing it. Press the same shortcut again to stop
+recording and open a copyable diagnostic dump; press `Esc` to close it.
+
+The bounded trace records editor events, cursor and caret positions, DOM shape,
+text fingerprints, native transaction results, undo/redo operations, history
+mode changes, and formatting fallbacks. It stays in memory and is never sent
+automatically. The copied dump includes the current message text and HTML, so
+review or redact sensitive content before sharing it in a bug report.
+
 ## Limitations
 
 - No `:` ex-commands, marks, named registers, or macros.

@@ -174,6 +174,7 @@ interface Span {
   node: ChildNode;
   start: number;
   end: number;
+  leadingBreak: boolean;
 }
 // A [start, end) linear selection span.
 interface LinearRange {
@@ -193,6 +194,42 @@ function isBogusTrailingBr(node: Node): boolean {
   );
 }
 
+function isChromeOverlay(node: Node): boolean {
+  return (
+    isElement(node) &&
+    (node.id === "thundervim-status" ||
+      node.id === "thundervim-cursor" ||
+      node.id === "thundervim-multi-cursors" ||
+      node.id === "thundervim-highlights" ||
+      node.id === "thundervim-dump")
+  );
+}
+
+// A block followed by raw text or an inline element has a rendered line break
+// that cannot be discovered by looking only at the following node. Block-to-
+// block and block-to-<br> boundaries are already emitted when those nodes are
+// visited, and literal leading newlines must not be doubled.
+function hasBlockBreakAfter(node: Element): boolean {
+  if (!BLOCK[node.tagName]) return false;
+  let next = node.nextSibling;
+  while (next) {
+    if (isText(next)) {
+      if (!next.data.length) {
+        next = next.nextSibling;
+        continue;
+      }
+      return next.data.charAt(0) !== "\n";
+    }
+    if (!isElement(next) || isChromeOverlay(next)) {
+      next = next.nextSibling;
+      continue;
+    }
+    if (next.tagName === "BR") return false;
+    return !BLOCK[next.tagName];
+  }
+  return false;
+}
+
 // Serialize the editor body to a linear string and locate the caret offset.
 function readBuffer(): ReadResult | null {
   const body = document.body;
@@ -210,8 +247,7 @@ function readBuffer(): ReadResult | null {
       text += node.data;
       return;
     }
-    if (!isElement(node)) return;
-    if (node.id === "thundervim-status") return;
+    if (!isElement(node) || isChromeOverlay(node)) return;
     const tag = node.tagName;
     if (tag === "BR") {
       if (node === focusNode) caret = text.length;
@@ -228,14 +264,147 @@ function readBuffer(): ReadResult | null {
       visit(children[i]);
     }
     if (recordAt === children.length) caret = text.length;
+    if (
+      hasBlockBreakAfter(node) &&
+      text.length > 0 &&
+      text[text.length - 1] !== "\n"
+    )
+      text += "\n";
   }
   visit(body);
   if (caret == null) caret = text.length;
   return { text: text, caret: caret };
 }
 
-// Ensure the editor renders literal newlines (so we can store the whole body
-// as one text node with "\n" characters instead of <br> elements).
+interface DebugTraceEntry {
+  seq: number;
+  ms: number;
+  event: string;
+  mode: Mode;
+  history: "native" | "split";
+  cursor: number;
+  model: string;
+  dom: string | null;
+  caret: number | null;
+  structure: string;
+  details: Record<string, string | number | boolean | null>;
+}
+
+let debugTraceStarted = Date.now();
+const debugTrace: DebugTraceEntry[] = [];
+let debugTraceSeq = 0;
+let debugTracing = false;
+let tracingDebugEvent = false;
+
+function textFingerprint(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${text.length}:${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function domStructure(): string {
+  const body = document.body;
+  if (!body) return "";
+  function describe(node: Node, depth: number): string {
+    if (isText(node)) return `#text(${node.data.length})`;
+    if (!isElement(node) || isChromeOverlay(node)) return "";
+    if (depth >= 4) return `<${node.tagName.toLowerCase()}>`;
+    const children = Array.from(node.childNodes)
+      .map((child) => describe(child, depth + 1))
+      .filter(Boolean)
+      .join("");
+    return `<${node.tagName.toLowerCase()}>${children}</${node.tagName.toLowerCase()}>`;
+  }
+  return Array.from(body.childNodes)
+    .map((node) => describe(node, 0))
+    .filter(Boolean)
+    .join("");
+}
+
+// Bounded, memory-only flight recorder. It intentionally stores fingerprints
+// and DOM shape rather than message text; the explicit dump already carries the
+// current text/HTML when the user chooses to copy it.
+function traceDebug(
+  event: string,
+  details: Record<string, string | number | boolean | null> = {},
+  captureDom = true,
+): void {
+  if (!debugTracing || tracingDebugEvent) return;
+  tracingDebugEvent = true;
+  try {
+    const dom = captureDom ? readBuffer() : null;
+    debugTrace.push({
+      seq: ++debugTraceSeq,
+      ms: Date.now() - debugTraceStarted,
+      event,
+      mode: state.mode,
+      history: sharedNativeHistory ? "native" : "split",
+      cursor: state.cursor,
+      model: textFingerprint(state.text),
+      dom: dom ? textFingerprint(dom.text) : null,
+      caret: dom ? dom.caret : null,
+      structure: captureDom ? domStructure() : "",
+      details,
+    });
+    if (debugTrace.length > 200) debugTrace.shift();
+  } finally {
+    tracingDebugEvent = false;
+  }
+}
+
+// Rich drafts may contain pretty-printing whitespace that normal HTML layout
+// collapses (including indentation between blocks and wrapped source lines).
+// Canonicalize only that collapsible whitespace before our exact DOM walkers
+// take over; otherwise enabling pre-wrap would expose source indentation as
+// visible mail content. Explicitly preformatted regions remain untouched.
+function normalizeCollapsibleWhitespace(): void {
+  const body = document.body;
+  if (!body) return;
+  const texts: Text[] = [];
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node as Text;
+    const parent = text.parentElement;
+    if (!parent || isChromeOverlay(parent)) continue;
+    const whiteSpace = window.getComputedStyle(parent).whiteSpace;
+    if (whiteSpace !== "normal" && whiteSpace !== "nowrap") continue;
+    text.data = text.data.replace(/[\t\n\f\r ]+/g, " ");
+    texts.push(text);
+  }
+
+  function hasLineBoundary(node: Node, before: boolean): boolean {
+    let current: Node | null = node;
+    while (current && current !== body) {
+      let sibling = before ? current.previousSibling : current.nextSibling;
+      while (sibling && isText(sibling) && !sibling.data.length)
+        sibling = before ? sibling.previousSibling : sibling.nextSibling;
+      if (sibling)
+        return (
+          isElement(sibling) &&
+          (sibling.tagName === "BR" || !!BLOCK[sibling.tagName])
+        );
+      const parent: ParentNode | null = current.parentNode;
+      if (!parent || parent === body) return true;
+      if (isElement(parent) && BLOCK[parent.tagName]) return true;
+      current = parent;
+    }
+    return true;
+  }
+
+  // Collapsed spaces at block/BR edges have no rendered width. Remove them so
+  // the serialized model matches what Thunderbird displays.
+  for (const text of texts) {
+    if (text.data.startsWith(" ") && hasLineBoundary(text, true))
+      text.data = text.data.slice(1);
+    if (text.data.endsWith(" ") && hasLineBoundary(text, false))
+      text.data = text.data.slice(0, -1);
+  }
+}
+
+// Ensure the flat fallback renders literal newlines stored in one text node.
 function ensurePreWrap(): void {
   const body = document.body;
   if (body && body.style.whiteSpace !== "pre-wrap")
@@ -289,9 +458,26 @@ function commonSuffixLen(a: string, b: string, prefix: number): number {
   return s;
 }
 
-function disableNativeHistoryBridge(): void {
+// Gecko may preserve an inserted space at a block join as NBSP. That is the
+// same rendered edit and must not disable the native history bridge. Keep the
+// actual DOM spelling in the model after accepting this equivalence.
+function nativeTextEquivalent(expected: string, actual: string): boolean {
+  if (expected.length !== actual.length) return false;
+  for (let i = 0; i < expected.length; i++) {
+    const a = expected.charAt(i);
+    const b = actual.charAt(i);
+    if (a === b) continue;
+    if ((a === " " && b === "\u00a0") || (a === "\u00a0" && b === " "))
+      continue;
+    return false;
+  }
+  return true;
+}
+
+function disableNativeHistoryBridge(reason = "unavailable"): void {
   if (!sharedNativeHistory) return;
   sharedNativeHistory = false;
+  traceDebug("history:split", { reason });
   if (typeof console !== "undefined" && console.warn) {
     console.warn(
       "thundervim: native undo bridge unavailable; using split history",
@@ -314,8 +500,15 @@ function applyNativeTransaction(
   const sfx = commonSuffixLen(oldText, newText, p);
   const qOld = oldText.length - sfx;
   const repl = newText.slice(p, newText.length - sfx);
+  traceDebug("native-edit:start", {
+    start: p,
+    oldEnd: qOld,
+    replacementLength: repl.length,
+    old: textFingerprint(oldText),
+    next: textFingerprint(newText),
+  });
   if (!selectRangeInDom(p, qOld)) {
-    disableNativeHistoryBridge();
+    disableNativeHistoryBridge("range-selection-failed");
     return false;
   }
 
@@ -332,10 +525,19 @@ function applyNativeTransaction(
   }
 
   const current = readBuffer();
-  if (!applied || !current || current.text !== newText) {
-    disableNativeHistoryBridge();
+  const exact = !!current && current.text === newText;
+  const equivalent = !!current && nativeTextEquivalent(newText, current.text);
+  traceDebug("native-edit:end", {
+    applied,
+    exact,
+    equivalent,
+    current: current ? textFingerprint(current.text) : null,
+  });
+  if (!applied || !equivalent) {
+    disableNativeHistoryBridge("native-result-mismatch");
     return false;
   }
+  if (!exact) state.text = current.text;
   if (placeCaret) setNativeCaret(caret);
   return true;
 }
@@ -409,22 +611,13 @@ function topLevelSpans(): Span[] | null {
   if (!body) return null;
   let acc = 0;
   let lastCh = "";
-  function isOverlay(node: Node): boolean {
-    return (
-      isElement(node) &&
-      (node.id === "thundervim-status" ||
-        node.id === "thundervim-cursor" ||
-        node.id === "thundervim-multi-cursors" ||
-        node.id === "thundervim-highlights")
-    );
-  }
   function measure(node: Node): void {
     if (isText(node)) {
       acc += node.data.length;
       if (node.data.length) lastCh = node.data.charAt(node.data.length - 1);
       return;
     }
-    if (!isElement(node) || isOverlay(node)) return;
+    if (!isElement(node) || isChromeOverlay(node)) return;
     if (node.tagName === "BR") {
       if (isBogusTrailingBr(node)) return;
       acc += 1;
@@ -437,15 +630,22 @@ function topLevelSpans(): Span[] | null {
     }
     const ch = node.childNodes;
     for (let i = 0; i < ch.length; i++) measure(ch[i]);
+    if (hasBlockBreakAfter(node) && acc > 0 && lastCh !== "\n") {
+      acc += 1;
+      lastCh = "\n";
+    }
   }
   const spans: Span[] = [];
   const kids = body.childNodes;
   for (let i = 0; i < kids.length; i++) {
     const node = kids[i];
-    const over = isOverlay(node);
+    const over = isChromeOverlay(node);
     const s = acc;
+    const leadingBreak =
+      isElement(node) && !!BLOCK[node.tagName] && acc > 0 && lastCh !== "\n";
     measure(node);
-    if (!over) spans.push({ node: node, start: s, end: acc });
+    if (!over)
+      spans.push({ node: node, start: s, end: acc, leadingBreak });
   }
   return spans;
 }
@@ -489,7 +689,11 @@ function scopedRewrite(
   const endOff = spans[i1].end;
   const newEndOff = endOff + (newText.length - oldText.length);
   if (newEndOff < startOff) return false;
-  const slice = newText.slice(startOff, newEndOff);
+  // A top-level block span owns the synthetic newline emitted when entering
+  // that block. The replacement block emits it too, so do not duplicate it in
+  // the replacement text node.
+  const sliceStart = startOff + (spans[i0].leadingBreak ? 1 : 0);
+  const slice = newText.slice(sliceStart, newEndOff);
   const parent = spans[i0].node.parentNode!;
   const stop = spans[i1].node.nextSibling;
   const anchor = spans[i0].node;
@@ -546,6 +750,7 @@ function applyEdit(
     const d = a.node.data;
     a.node.data = d.slice(0, a.offset) + repl + d.slice(b.offset);
     if (placeCaret) setNativeCaret(caret);
+    traceDebug("dom-edit:text-splice", { start: p, oldEnd: qOld });
     return;
   }
 
@@ -555,19 +760,39 @@ function applyEdit(
   // leaving quoted-reply and other siblings intact. Decide before mutating the
   // DOM so scopedRewrite reads a clean tree.
   if (editCrossesBlock(p, qOld, oldText.length)) {
-    if (scopedRewrite(oldText, newText, p, qOld, caret, placeCaret)) return;
+    const rewritten = scopedRewrite(
+      oldText,
+      newText,
+      p,
+      qOld,
+      caret,
+      placeCaret,
+    );
+    traceDebug("dom-edit:scoped-rewrite", { rewritten });
+    if (rewritten) return;
   } else if (generalReplace(p, qOld, repl)) {
     // Within-block cross-boundary edit (e.g. spanning a <br> or inline tag).
     // The range surgery preserves surrounding formatting when it reproduces
     // newText exactly.
     const check = readBuffer();
-    if (check && check.text === newText) {
+    const matched = !!check && check.text === newText;
+    traceDebug("dom-edit:range", { matched });
+    if (matched) {
       if (placeCaret) setNativeCaret(caret);
       return;
     }
     // The splice didn't reproduce newText; try the scoped re-render before the
     // last-resort flat writer.
-    if (scopedRewrite(oldText, newText, p, qOld, caret, placeCaret)) return;
+    const rewritten = scopedRewrite(
+      oldText,
+      newText,
+      p,
+      qOld,
+      caret,
+      placeCaret,
+    );
+    traceDebug("dom-edit:scoped-after-range", { rewritten });
+    if (rewritten) return;
   }
   if (typeof console !== "undefined" && console.warn) {
     console.warn(
@@ -580,6 +805,10 @@ function applyEdit(
         (document.body ? document.body.innerHTML : ""),
     );
   }
+  traceDebug("dom-edit:flat-rewrite", {
+    old: textFingerprint(oldText),
+    next: textFingerprint(newText),
+  });
   writeBuffer(newText, caret);
 }
 
@@ -618,12 +847,16 @@ function syncDom(placeCaret: boolean): void {
 // formatting or copy command leaves the text unchanged and preserves history.
 function resyncFromDom(): void {
   const b = readBuffer();
-  if (!b || b.text === state.text) return;
+  if (!b || b.text === state.text) {
+    traceDebug("native-command:resync", { changed: false });
+    return;
+  }
   rebaseFromEditor(state, b.text, b.caret);
   state.mode = MODE.NORMAL;
   extraCursors = [];
   syncDom(false);
   updateBar();
+  traceDebug("native-command:resync", { changed: true });
 }
 
 // After a native command applied to the Vim visual selection: formatting/copy
@@ -670,22 +903,25 @@ function ensureTrailingPad(text: string): void {
 // the body exactly the way readBuffer serializes it -- including the synthetic
 // newline inserted at a block-element boundary. Keeping this walk in lockstep
 // with readBuffer is what lets offsets stay correct in a rich (non-flat) DOM.
-function domPointAt(target: number): DomPoint | null {
+function domPointAt(target: number, preferNext = false): DomPoint | null {
   const body = document.body;
   if (!body) return null;
   let acc = 0;
   let lastCh = ""; // last emitted character ("" = nothing emitted yet)
   let lastLeaf: Boundary | null = null; // DOM point just after the last emitted character
+  let boundaryAtTarget: Boundary | null = null;
   let result: DomPoint | null = null;
   function visit(node: Node): void {
     if (result) return;
     if (isText(node)) {
       const data = node.data;
       const len = data.length;
-      if (target <= acc + len) {
+      if (target < acc + len || (!preferNext && target === acc + len)) {
         result = { node: node, offset: target - acc, br: false };
         return;
       }
+      if (target === acc + len)
+        boundaryAtTarget = { node: node, offset: len };
       acc += len;
       if (len) {
         lastCh = data.charAt(len - 1);
@@ -694,13 +930,7 @@ function domPointAt(target: number): DomPoint | null {
       return;
     }
     if (!isElement(node)) return;
-    if (
-      node.id === "thundervim-status" ||
-      node.id === "thundervim-cursor" ||
-      node.id === "thundervim-multi-cursors" ||
-      node.id === "thundervim-highlights"
-    )
-      return;
+    if (isChromeOverlay(node)) return;
     if (node.tagName === "BR") {
       if (isBogusTrailingBr(node)) return; // padding node, not a newline
       if (target === acc) {
@@ -714,6 +944,7 @@ function domPointAt(target: number): DomPoint | null {
         node: p,
         offset: Array.from<Node>(p.childNodes).indexOf(node) + 1,
       };
+      if (preferNext && target === acc) boundaryAtTarget = lastLeaf;
       return;
     }
     // Entering a block element emits a newline (unless one is already there),
@@ -725,12 +956,27 @@ function domPointAt(target: number): DomPoint | null {
       }
       acc += 1;
       lastCh = "\n";
+      if (preferNext && target === acc) boundaryAtTarget = lastLeaf;
     }
     const children = node.childNodes;
     for (let i = 0; i < children.length && !result; i++) visit(children[i]);
+    if (
+      !result &&
+      hasBlockBreakAfter(node) &&
+      acc > 0 &&
+      lastCh !== "\n"
+    ) {
+      if (target === acc) {
+        result = lastLeaf || { node: node, offset: children.length, br: false };
+        return;
+      }
+      acc += 1;
+      lastCh = "\n";
+      if (preferNext && target === acc) boundaryAtTarget = lastLeaf;
+    }
   }
   visit(body);
-  return result;
+  return result || boundaryAtTarget;
 }
 
 // A DOM boundary { node, offset } suitable for Range.setStart/setEnd. Unlike a
@@ -902,7 +1148,11 @@ function selectionRange(): LinearRange | null {
 
 function buildDomRange(start: number, end: number): Range | null {
   const ps = domPointAt(start);
-  const pe = domPointAt(end);
+  // At a text-node boundary, the start belongs to the preceding content while
+  // the end belongs to the following content. This distinction matters for a
+  // native cross-block edit: selecting a line break must reach into the next
+  // block so Gecko can merge the two blocks as one undoable transaction.
+  const pe = domPointAt(end, end > start);
   if (!ps || !pe) return null;
   const r = document.createRange();
   try {
@@ -1011,12 +1261,9 @@ function removeChromeOverlays(): void {
     "thundervim-cursor",
     "thundervim-multi-cursors",
     "thundervim-highlights",
+    "thundervim-dump",
   ]) {
     document.getElementById(id)?.remove();
-  }
-  if (dumpOverlay) {
-    dumpOverlay.remove();
-    dumpOverlay = null;
   }
 }
 
@@ -1401,6 +1648,17 @@ const TEXT_EDIT_INPUT_TYPES: Record<string, number> = {
 // beforeinput for the same key are cancelled without affecting later,
 // unrelated input events.
 function onInputEvent(e: Event): void {
+  if (e.type === "beforeinput") {
+    const input = e as InputEvent;
+    traceDebug(
+      "beforeinput",
+      {
+        inputType: input.inputType || "",
+        nativeTransaction: applyingVimTransaction,
+      },
+      false,
+    );
+  }
   if (applyingVimTransaction) return;
 
   if (
@@ -1433,6 +1691,13 @@ function onInputEvent(e: Event): void {
   e.stopPropagation();
   if (e.stopImmediatePropagation) e.stopImmediatePropagation();
 }
+
+function onInputCommitted(e: Event): void {
+  if (!debugTracing || applyingVimTransaction) return;
+  const inputType = (e as InputEvent).inputType || "";
+  setTimeout(() => traceDebug("input", { inputType }), 0);
+}
+
 function isToggle(ev: NormKey): boolean {
   const t = config.toggle;
   return (
@@ -1609,10 +1874,12 @@ function resyncInsertAfterNativeHistory(): void {
   // primary native caret and drop offsets that can no longer be reconstructed.
   extraCursors = [];
   updateBar();
+  traceDebug("insert-history:resync");
 }
 
 
 function runNativeHistory(command: "undo" | "redo", count: number): void {
+  traceDebug("native-history:start", { command, count });
   applyingVimTransaction = true;
   try {
     for (let i = 0; i < count; i++) {
@@ -1643,11 +1910,27 @@ function runNativeHistory(command: "undo" | "redo", count: number): void {
   ensureTrailingPad(state.text);
   setNativeCaret(state.cursor);
   updateBar();
+  traceDebug("native-history:end", { command, count });
 }
 
 function onKeydown(e: KeyboardEvent): void {
   suppressInput = false;
   const ev = normalize(e);
+
+  const redactInsertKey =
+    state.mode === MODE.INSERT &&
+    ev.key.length === 1 &&
+    !ev.ctrl &&
+    !ev.alt &&
+    !ev.meta;
+  traceDebug("keydown", {
+    key: redactInsertKey ? "<text>" : ev.key,
+    code: redactInsertKey ? "" : ev.code,
+    ctrl: ev.ctrl,
+    alt: ev.alt,
+    shift: ev.shift,
+    meta: ev.meta,
+  });
 
   // The enable/disable toggle works even while Thundervim is off.
   if (isToggle(ev)) {
@@ -1669,15 +1952,15 @@ function onKeydown(e: KeyboardEvent): void {
     if (added && sharedNativeHistory) {
       state.undoStack = [];
       state.redoStack = [];
-      disableNativeHistoryBridge();
+      disableNativeHistoryBridge("multi-cursor-enabled");
     }
+    traceDebug("multi-cursor", { added });
     return;
   }
 
-  // Debug chord (Ctrl-Alt-D): dump the DOM + linear model. Works regardless of
-  // enabled state so it can capture round-trip bug reports. Match on ev.code
-  // (physical KeyD): on macOS the Option/Alt key rewrites ev.key (Option+D ->
-  // a dead key), so ev.key would never equal "d" while Alt is held.
+  // Ctrl-Alt-D toggles the opt-in flight recorder. The first press starts a
+  // fresh trace; the second stops it and opens the copyable dump. Match on the
+  // physical key because macOS Option rewrites the logical key value.
   if (
     ev.ctrl &&
     ev.alt &&
@@ -1685,7 +1968,22 @@ function onKeydown(e: KeyboardEvent): void {
     (ev.code === "KeyD" || ev.key.toLowerCase() === "d")
   ) {
     swallow(e);
-    dumpState("manual");
+    if (debugTracing) {
+      traceDebug("trace:stop");
+      debugTracing = false;
+      dumpState("manual");
+    } else {
+      debugTrace.length = 0;
+      debugTraceSeq = 0;
+      debugTraceStarted = Date.now();
+      debugTracing = true;
+      traceDebug("trace:start");
+      setBar(
+        "-- thundervim: trace recording (Ctrl-Option-D to stop) --",
+        "",
+        "normal",
+      );
+    }
     return;
   }
 
@@ -1766,6 +2064,7 @@ function onKeydown(e: KeyboardEvent): void {
         swallow(e);
         syncDom(false);
         updateBar();
+        traceDebug("insert:escape");
       }
       return;
     }
@@ -1819,16 +2118,18 @@ function onKeydown(e: KeyboardEvent): void {
   }
   syncDom(enteredInsert);
   updateBar();
+  traceDebug("vim-command:end", {
+    key: ev.key,
+    enteredInsert,
+    textChanged: before.text !== state.text,
+  });
 }
 
 // ---------------------------------------------------------------- init
 
-// Diagnostic: dump the live DOM and the linear model. Neither the content-
-// script console nor the clipboard APIs are usable in Thunderbird's compose
-// sandbox (console output is hidden; navigator.clipboard is undefined and
-// execCommand("copy") silently no-ops inside the contenteditable). So we show
-// the JSON in a visible, pre-selected textarea overlay: the user copies it
-// with a native Cmd+C and dismisses it with Esc. Triggered by Ctrl-Alt-D.
+// Diagnostic: dump the live DOM and linear model into an extension-owned
+// popup. It must never be mounted in the compose body: Thunderbird can autosave
+// that body at any moment and would persist diagnostic UI as message content.
 function dumpState(label?: string) {
   const b = readBuffer();
   const info = {
@@ -1839,61 +2140,30 @@ function dumpState(label?: string) {
     text: b ? b.text : null,
     caret: b ? b.caret : null,
     html: document.body ? document.body.innerHTML : null,
+    traceRecording: debugTracing,
+    trace: debugTrace.slice(),
   };
   const json = JSON.stringify(info, null, 2);
   if (typeof console !== "undefined" && console.log)
     console.log("thundervim dump", info);
-  showDumpOverlay(json);
+  void showDumpWindow(json);
   return info;
 }
 
-let dumpOverlay: HTMLElement | null = null;
-function closeDumpOverlay(): void {
-  if (dumpOverlay && dumpOverlay.parentNode)
-    dumpOverlay.parentNode.removeChild(dumpOverlay);
-  dumpOverlay = null;
-  if (document.body && document.body.focus) document.body.focus();
-  updateBar();
-}
-function showDumpOverlay(text: string): void {
-  closeDumpOverlay();
-  const doc = document;
-  const host = doc.body || doc.documentElement;
-  const overlay = doc.createElement("div");
-  overlay.style.cssText =
-    "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.55);" +
-    "display:flex;flex-direction:column;padding:24px;box-sizing:border-box;";
-  const hint = doc.createElement("div");
-  hint.textContent = "thundervim dump \u2014 press Cmd+C to copy, Esc to close";
-  hint.style.cssText =
-    "color:#fff;font:13px/1.4 monospace;margin-bottom:8px;flex:0 0 auto;";
-  const ta = doc.createElement("textarea");
-  ta.value = text;
-  ta.style.cssText =
-    "flex:1 1 auto;width:100%;box-sizing:border-box;font:12px/1.4 monospace;" +
-    "padding:8px;resize:none;background:#111;color:#eee;border:1px solid #555;";
-  ta.addEventListener("keydown", function (e) {
-    // Keep the vim keydown handler out; let native copy/select work here.
-    e.stopPropagation();
-    if (e.key === "Escape") {
-      e.preventDefault();
-      closeDumpOverlay();
-    }
-  });
-  overlay.addEventListener("mousedown", function (e) {
-    if (e.target === overlay) closeDumpOverlay(); // click backdrop to close
-  });
-  overlay.appendChild(hint);
-  overlay.appendChild(ta);
-  host.appendChild(overlay);
-  dumpOverlay = overlay;
-  ta.focus();
-  ta.select();
-  setBar(
-    "-- thundervim: dump ready (Cmd+C to copy, Esc to close) --",
-    "",
-    "normal",
-  );
+async function showDumpWindow(text: string): Promise<void> {
+  const runtime = extensionApi()?.runtime;
+  if (!runtime) {
+    window.prompt("Copy the Thundervim diagnostic dump:", text);
+    return;
+  }
+  try {
+    await runtime.sendMessage({ type: "thundervim:debug-dump", text });
+    setBar("-- thundervim: dump opened in a separate window --", "", "normal");
+  } catch {
+    // A native prompt is less convenient but still cannot be serialized into
+    // the draft, unlike an element mounted in the compose body.
+    window.prompt("Copy the Thundervim diagnostic dump:", text);
+  }
 }
 if (typeof window !== "undefined") window.thundervim_dump = dumpState;
 
@@ -1901,10 +2171,14 @@ async function init(): Promise<void> {
   applyConfig(await loadConfig());
   state.mode = config.defaultMode === "normal" ? MODE.NORMAL : MODE.INSERT;
   enabled = config.enableOnStart;
-  ensurePreWrap();
+  // Remove a diagnostic overlay persisted by older development builds before
+  // Thunderbird gets another chance to autosave it.
+  document.getElementById("thundervim-dump")?.remove();
+  normalizeCollapsibleWhitespace();
   document.addEventListener("keydown", onKeydown, true);
   document.addEventListener("keypress", onInputEvent, true);
   document.addEventListener("beforeinput", onInputEvent, true);
+  document.addEventListener("input", onInputCommitted, true);
   // While typing in Insert mode the engine cursor is stale, so keep the ruler
   // live from the DOM caret. `selectionchange` covers typing, arrows and clicks.
   document.addEventListener("selectionchange", updateRulerLive);
@@ -1925,11 +2199,13 @@ async function init(): Promise<void> {
         const b = readBuffer();
         if (b) syncFromEditor(state, b.text, b.caret);
         render();
+        traceDebug("mouseup:resync");
       }
     },
     true,
   );
   updateBar();
+  traceDebug("init");
 }
 if (document.readyState === "loading") {
   document.addEventListener(

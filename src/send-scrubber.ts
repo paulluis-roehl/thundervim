@@ -37,7 +37,11 @@ export function scrubHtmlBody(
   // Never scrub doc.body.textContent: assigning it would flatten all HTML
   // structure, including the elements that preserve visible line breaks.
   let changed = false;
-  for (const id of ["thundervim-status", "thundervim-status-host"]) {
+  for (const id of [
+    "thundervim-status",
+    "thundervim-status-host",
+    "thundervim-dump",
+  ]) {
     const node = doc.getElementById(id);
     if (node) {
       node.remove();

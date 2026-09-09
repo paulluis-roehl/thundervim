@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Thundervim Diagnostic Dump</title>
+        <link rel="stylesheet" href="debug.css" />
+        <script src="debug.js" defer></script>
+    </head>
+    <body>
+        <header>
+            <div>
+                <h1>Thundervim diagnostic dump</h1>
+                <p>Review sensitive message content before sharing.</p>
+            </div>
+            <div class="actions">
+                <button id="copy" type="button">Copy</button>
+                <button id="close" type="button">Close</button>
+            </div>
+        </header>
+        <textarea id="dump" readonly spellcheck="false"></textarea>
+        <output id="status" aria-live="polite"></output>
+    </body>
+</html>

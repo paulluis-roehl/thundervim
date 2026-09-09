@@ -37,6 +37,14 @@ async function copyAssets() {
     path.join(root, "src", "options.css"),
     path.join(pkgDir, "options.css"),
   );
+  await copyFile(
+    path.join(root, "src", "debug.html"),
+    path.join(pkgDir, "debug.html"),
+  );
+  await copyFile(
+    path.join(root, "src", "debug.css"),
+    path.join(pkgDir, "debug.css"),
+  );
 
   const iconsDir = path.join(pkgDir, "assets", "icons");
   await mkdir(iconsDir, { recursive: true });
@@ -52,6 +60,7 @@ const options = {
   entryPoints: {
     background: path.join(root, "src", "background.ts"),
     compose: path.join(root, "src", "compose.ts"),
+    debug: path.join(root, "src", "debug.ts"),
     options: path.join(root, "src", "options.ts"),
   },
   bundle: true,
@@ -86,6 +95,9 @@ if (watch) {
       "background.js",
       "compose.js",
       "statusbar.css",
+      "debug.html",
+      "debug.css",
+      "debug.js",
       "options.html",
       "options.css",
       "options.js",
