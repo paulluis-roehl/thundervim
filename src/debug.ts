@@ -21,7 +21,7 @@ function must<T extends HTMLElement>(id: string): T {
 }
 
 const dump = must<HTMLTextAreaElement>("dump");
-const copy = must<HTMLButtonElement>("copy");
+const copyButton = must<HTMLButtonElement>("copy");
 const closeButton = must<HTMLButtonElement>("close");
 const statusOutput = must<HTMLOutputElement>("status");
 
@@ -36,7 +36,7 @@ async function copyDump(): Promise<void> {
   }
 }
 
-copy.addEventListener("click", () => void copyDump());
+copyButton.addEventListener("click", () => void copyDump());
 closeButton.addEventListener("click", () => window.close());
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") window.close();
@@ -44,11 +44,15 @@ document.addEventListener("keydown", (event) => {
 
 void (async () => {
   const id = new URLSearchParams(window.location.search).get("id") ?? "";
-  const response = (await extensionApi()?.runtime?.sendMessage({
-    type: "thundervim:get-debug-dump",
-    id,
-  })) as { text?: unknown } | undefined;
-  dump.value = typeof response?.text === "string" ? response.text : "";
+  try {
+    const response = (await extensionApi()?.runtime?.sendMessage({
+      type: "thundervim:get-debug-dump",
+      id,
+    })) as { text?: unknown } | undefined;
+    dump.value = typeof response?.text === "string" ? response.text : "";
+  } catch {
+    dump.value = "";
+  }
   if (!dump.value)
     statusOutput.value = "The diagnostic dump is no longer available.";
   dump.focus();

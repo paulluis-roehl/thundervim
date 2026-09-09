@@ -20,13 +20,17 @@ interface DebugDumpRequest {
   id: string;
 }
 
+interface DebugDumpResponse {
+  text: string;
+}
+
 interface BrowserRuntime {
   onMessage: {
     addListener(
       listener: (
         message: unknown,
         sender: { tab?: { id?: number } },
-      ) => void | { text: string } | Promise<void | { text: string }>,
+      ) => void | DebugDumpResponse | Promise<void | DebugDumpResponse>,
     ): void;
   };
   getURL(path: string): string;
@@ -92,32 +96,33 @@ function extensionApi(): BrowserApi | null {
   return globals.messenger ?? globals.browser ?? null;
 }
 
+function isMessage(message: unknown): message is Record<string, unknown> {
+  return typeof message === "object" && message !== null;
+}
+
 function isDebugDumpMessage(message: unknown): message is DebugDumpMessage {
   return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as { type?: unknown }).type === "thundervim:debug-dump" &&
-    typeof (message as { text?: unknown }).text === "string"
+    isMessage(message) &&
+    message.type === "thundervim:debug-dump" &&
+    typeof message.text === "string"
   );
 }
 
 function isDebugDumpRequest(message: unknown): message is DebugDumpRequest {
   return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as { type?: unknown }).type === "thundervim:get-debug-dump" &&
-    typeof (message as { id?: unknown }).id === "string"
+    isMessage(message) &&
+    message.type === "thundervim:get-debug-dump" &&
+    typeof message.id === "string"
   );
 }
 
 function isModeMessage(message: unknown): message is ModeMessage {
   return (
-    typeof message === "object" &&
-    message !== null &&
-    (message as { type?: unknown }).type === "thundervim:mode" &&
-    typeof (message as { mode?: unknown }).mode === "string" &&
-    typeof (message as { left?: unknown }).left === "string" &&
-    typeof (message as { right?: unknown }).right === "string"
+    isMessage(message) &&
+    message.type === "thundervim:mode" &&
+    typeof message.mode === "string" &&
+    typeof message.left === "string" &&
+    typeof message.right === "string"
   );
 }
 

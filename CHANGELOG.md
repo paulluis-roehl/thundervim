@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.3.8
+
+This release fixes rich HTML editing and keeps diagnostics out of saved drafts.
+
+### Fixed
+
+- **Rich messages keep their rendered line structure.** Caret movement and edits
+  now agree on line breaks between block elements, raw text, and inline content.
+- **Rich drafts no longer expose source indentation as visible whitespace.**
+  Thundervim preserves explicitly preformatted content while normalizing only
+  whitespace that HTML would ordinarily collapse.
+- **Structural Vim edits remain in Thunderbird's native undo history.** Range
+  boundaries, block rewrites, and Gecko's ordinary-space/NBSP normalization no
+  longer cause false transaction failures or flatten rich content.
+- **Diagnostic traces open in a separate extension window.** Debug UI can no
+  longer be autosaved into a draft, and legacy diagnostic nodes are removed
+  when editing or sending affected messages.
+
 ## v0.3.7
 
 ### Changed
@@ -69,9 +87,9 @@ A sentence motion plus a major rich-text (HTML) reliability fix.
   A sentence ends at `.`, `!`, or `?` (with any trailing `)`, `]`, `"`, `'`)
   followed by whitespace, and never crosses a blank line — matching the `is` /
   `as` text object added in v0.2.0.
-- **Diagnostic dump** on `Ctrl-Alt-D` (macOS: `Ctrl`+`Option`+`D`) opens an
-  overlay with the live DOM and the linear buffer model, ready to copy. Handy
-  for reporting a round-trip bug on a complex message.
+- **Diagnostic dump** on `Ctrl-Alt-D` (macOS: `Ctrl`+`Option`+`D`) opens a
+  copyable view of the live DOM and linear buffer model. Handy for reporting a
+  round-trip bug on a complex message.
 
 ### Fixed
 

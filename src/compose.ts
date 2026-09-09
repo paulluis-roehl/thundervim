@@ -276,6 +276,8 @@ function readBuffer(): ReadResult | null {
   return { text: text, caret: caret };
 }
 
+const DEBUG_TRACE_LIMIT = 200;
+
 interface DebugTraceEntry {
   seq: number;
   ms: number;
@@ -349,7 +351,7 @@ function traceDebug(
       structure: captureDom ? domStructure() : "",
       details,
     });
-    if (debugTrace.length > 200) debugTrace.shift();
+    if (debugTrace.length > DEBUG_TRACE_LIMIT) debugTrace.shift();
   } finally {
     tracingDebugEvent = false;
   }
@@ -1865,6 +1867,23 @@ function canRunNativeVimUndo(): boolean {
   return !p.op && !p.g && !p.replace && !p.textobj && !p.find;
 }
 
+function toggleDebugTrace(): void {
+  if (debugTracing) {
+    traceDebug("trace:stop");
+    debugTracing = false;
+    dumpState("manual");
+    return;
+  }
+
+  debugTrace.length = 0;
+  debugTraceSeq = 0;
+  debugTraceStarted = Date.now();
+  debugTracing = true;
+  traceDebug("trace:start");
+  const chord = isMacOS() ? "Ctrl-Option-D" : "Ctrl-Alt-D";
+  setBar(`-- thundervim: trace recording (${chord} to stop) --`, "", "normal");
+}
+
 function resyncInsertAfterNativeHistory(): void {
   const b = readBuffer();
   if (!b) return;
@@ -1876,7 +1895,6 @@ function resyncInsertAfterNativeHistory(): void {
   updateBar();
   traceDebug("insert-history:resync");
 }
-
 
 function runNativeHistory(command: "undo" | "redo", count: number): void {
   traceDebug("native-history:start", { command, count });
@@ -1968,22 +1986,7 @@ function onKeydown(e: KeyboardEvent): void {
     (ev.code === "KeyD" || ev.key.toLowerCase() === "d")
   ) {
     swallow(e);
-    if (debugTracing) {
-      traceDebug("trace:stop");
-      debugTracing = false;
-      dumpState("manual");
-    } else {
-      debugTrace.length = 0;
-      debugTraceSeq = 0;
-      debugTraceStarted = Date.now();
-      debugTracing = true;
-      traceDebug("trace:start");
-      setBar(
-        "-- thundervim: trace recording (Ctrl-Option-D to stop) --",
-        "",
-        "normal",
-      );
-    }
+    toggleDebugTrace();
     return;
   }
 
